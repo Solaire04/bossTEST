@@ -13,14 +13,19 @@ LD_LIBRARY_PATH="/opt/ASI_linux_mac_SDK_V1.37/lib/x64:$LD_LIBRARY_PATH" exec wis
 ### 2025.06: initial release, tk8.6 RedHat8, tk8.6 Ubuntu 24.04LTS, for ASI294MM (mono) camera
 ###
 
-set APPNAME    [lindex [file split [info script]] end]
-set PLATFORM   [lindex [array get tcl_platform os] 1]
-set VERSION    2025.06.11
-set RCNAME     [file join [cd; pwd] .${APPNAME}rc]
-set MIN_W      640
-set MIN_H      480
-set DEBUG      0
-set TABS       {Settings LiveView Spectrum}
+set APPNAME     [lindex [file split [info script]] end]
+set PLATFORM    [lindex [array get tcl_platform os] 1]
+set VERSION     2025.06.11
+set PWD         [pwd]
+set RCNAME      [file join [cd; pwd] .${APPNAME}rc]
+set MIN_W       640
+set MIN_H       480
+set DEBUG       0
+set TABS        {Settings LiveView Spectrum}
+set DEFAULTS    {
+  File          {v {test.dat}   h "extensions .raw/.dat/.cfg vary as needed"}
+  }
+
 
 ### at runtime, can set the DEBUG flag, if passed as the first parameter
 switch -- $argc {
@@ -217,7 +222,7 @@ proc DefaultGeometry {} {
   return $wmG
   } 
 
-proc setStatus { state message } {
+proc SetStatus { state message } {
    global .status.led .status.text
    if { $state == "ok" } {
      .status.led configure -background green
@@ -406,26 +411,6 @@ array set FILE_TYPE { raw {{raw} {.raw}} fits {{FITS} {.fits}} txt {{spectrum} {
 array set ASI_IMG_TYPE { 0 RAW8 1 RGB24 2 RAW16 3 Y8 }
 array set RAW_IMG_TYPE { 0 {byte} 1 {byte} 2 {short} 3 {byte} }
 
-# default settings
-set nCameras 0
-set listOfCameras [list]
-set cameraId -1
-set cameraNow ""
-set currentTemp ""
-set currentTempC "T=----"
-set targetTemp 15
-set coolerOn 0
-set coolPowerPerc 0
-set expTime 10
-set eunit ms
-set eunits { \u03BCs 1 ms 1000 s 1000000 }
-set imgData ""
-set imgImg [image create photo -palette 65535]
-set zoomFactors { 1 2 4 8 16 }
-set imgZoomDefault 8
-
-set imgType 2
-
 set basefontsize 11
 set fontDefault Arial
 set fontWeight normal
@@ -449,15 +434,26 @@ foreach o [dict keys $fopts] { font configure tabsetFont $o [dict get $fopts $o]
 # adjust its size
 font configure tabsetFont -size [expr -round([dict get $fopts -size]*[tk scaling])]
 
-### interface --------------------------------------------------------------------------------
-if {$DEBUG} { puts "DEBUG: configuring GUI" }
+# default settings
+set nCameras 0
+set listOfCameras [list]
+set cameraId -1
+set cameraNow ""
+set currentTemp ""
+set currentTempC "T=----"
+set targetTemp 15
+set coolerOn 0
+set coolPowerPerc 0
+set expTime 10
+set eunit ms
+set eunits { \u03BCs 1 ms 1000 s 1000000 }
+set imgData ""
+set imgImg [image create photo -palette 65535]
+set zoomFactors { 1 2 4 8 16 }
+set imgZoomDefault 8
 
-wm geometry . #wmG; wm title . "$APPNAME v.$VERSION ($PLATFORM)"
-wm minsize . $MIN_W $MIN_H
-wm protocol . WM_DELETE_WINDOW {
-  set answer [tk_messageBox -message "Quit $APPNAME?" -type yesno]
-  if {$answer=="yes"} { set wmG [winfo geometry . ]; SaveSettings 0 $RCNAME; exit }
-  }
+set imgType 2
+
 if { [catch {set file [open $RCNAME "r"]}] } {
   if {$DEBUG} { puts "DEBUG: unable to read $RCNAME, defaulting all settings\n" }
   set settings [linsert $DEFAULTS 0 WorkDir "v $PWD h \"current work directory\""]
@@ -467,6 +463,19 @@ if { [catch {set file [open $RCNAME "r"]}] } {
 else {
   close $file
   LoadSettings 0 $RCNAME
+  }
+UpdateSettings
+cd "$WorkDir" 
+if {$DEBUG} { puts "DEBUG: in $WorkDir" }
+
+### interface --------------------------------------------------------------------------------
+if {$DEBUG} { puts "DEBUG: configuring GUI" }
+
+wm geometry . $wmG; wm title . "$APPNAME v.$VERSION ($PLATFORM)"
+wm minsize . $MIN_W $MIN_H
+wm protocol . WM_DELETE_WINDOW {
+  set answer [tk_messageBox -message "Quit $APPNAME?" -type yesno]
+  if {$answer=="yes"} { set wmG [winfo geometry . ]; SaveSettings 0 $RCNAME; exit }
   }
 
 ### main window has tabs

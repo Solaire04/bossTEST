@@ -1,0 +1,523 @@
+#!/bin/bash
+# the next line restarts using wish\
+LD_LIBRARY_PATH="/opt/ASI_linux_mac_SDK_V1.37/lib/x64:$LD_LIBRARY_PATH" exec wish "$0" "$@"
+
+### if the ASI libraries are installed in the search path, this is all that is needed
+###exec wish "$0" "$@"
+### can also be launched under other versions of wish, for example under Androwish or its non-Android relatives:
+#exec /usr/local/bin/undroidwish "$0" -sdlrootheight 720 -sdlrootwidth 1600 -sdlheight 720 -sdlwidth 1600 -sdlresizable "$@"
+#exec /usr/local/bin/vanillawish "$0" "$@"
+
+###
+### Written by edward.sternin@brocku.ca
+### 2025.06: initial release, tk8.6 RedHat8, tk8.6 Ubuntu 24.04LTS, for ASI294MM (mono) camera
+###
+
+set APPNAME    [lindex [file split [info script]] end]
+set PLATFORM   [lindex [array get tcl_platform os] 1]
+set VERSION    2025.06.11
+set RCNAME     [file join [cd; pwd] .${APPNAME}rc]
+set MIN_W      640
+set MIN_H      480
+set DEBUG      0
+set TABS       {Settings LiveView Spectrum}
+
+### at runtime, can set the DEBUG flag, if passed as the first parameter
+switch -- $argc {
+  0 { }
+  1 { if {[lindex $argv 0]=="DEBUG"} { set DEBUG 1 } }
+  default { puts "$APPNAME invoked with too many arguments ($argc), abort."; exit}
+  }
+
+if {$DEBUG} {puts "DEBUG: $APPNAME@$PLATFORM invoked with DEBUG"}
+
+### ensure all needed libraries are available ---------------------------------------
+
+if { [catch {package require Tk}] } {
+  puts stderr "Tk package is missing, maybe `sudo apt-get install tk`\n"; exit 1
+  }\
+else {
+  catch { tk_getOpenFile foo bar }
+  if { [namespace exists ::tk::dialog] } {
+    # some tcl/tk implementations do not implement ::tk::dialog
+    # do a dummy file load, to import the ::dialog:: space, change these tkfbox settings
+    # from the system-wide defaults, typically in /usr/share/tk8.5/tkfbox.tcl
+    if {$DEBUG} { puts "DEBUG: changing the defaults settings for hidden files" }
+    set ::tk::dialog::file::showHiddenBtn 1
+    set ::tk::dialog::file::showHiddenVar 0
+    }
+  }
+  
+if { [catch {package require Tcl; package require tcl::chan::string; package require base64 }] } {
+  puts stderr "tcllib is missing, maybe `sudo apt-get install tclib`\n"; exit 1
+  }
+  
+if { [catch {package require Img; package require img::raw}] } {
+  puts stderr "Img package is missing, maybe `sudo apt-get install img`\n"; exit 1
+  }
+
+if { [catch {package require BWidget}] } {
+  puts stderr "BWidget package is missing, maybe `sudo apt-get install bwidget`\n"; exit 1
+  }
+
+if { [catch {package require critcl}] } {
+  puts stderr "critcl package is missing, maybe `sudo apt-get install critcl`\n"; exit 1
+  }
+
+if { [catch {set BLTversion [package require BLT]}] } {
+  puts stderr "BLT package is missing, maybe `sudo apt-get install blt`\n"; exit 1
+  }
+namespace import ::blt::*
+proc InitCrosshairs {g} {Blt_Crosshairs $g; Blt_ZoomStack $g}
+
+### include the base64-encoded images for buttons ----------------------------------------------
+
+image create photo button_open -data {
+R0lGODdhGAAYAPYAAP///wcHBwgICBMTExQUFBYWFhwcHB8fHycnJy8vL0BAQCsrK0pKSjIy
+Ml5eXk5OTjY2Njs7O1hYWGFhYT09PVJSUj8/P1VVVUZGRmhoaFFRUVNTU2tra19fX3FxcWBg
+YGNjY3JycoKCgpGRkZKSkpaWlpeXl5ubm5ycnHt7e39/f6CgoKGhoY6OjqOjo4WFhYmJiYeH
+h6Wlpaampqenp56enoqKiqqqqpCQkK6urpOTk6ioqLKysrOzs52dnZ+fn7a2tq2traKiori4
+uLm5ubq6uqSkpKmpqaurq6ysrMDAwK+vr7GxscPDw8TExLu7u8rKysvLy8zMzM3Nzb6+vs7O
+zsHBwcLCwsXFxcnJyc/Pz9TU1NjY2Nra2t/f3+Dg4OPj4+Xl5ejo6O3t7e7u7u/v7/Dw8PHx
+8fLy8vPz8/T09Pr6+vv7+/z8/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAACwAAAAAGAAYAAAH/oAAgoOEhYaHgxAuP4yNjj8aiIJIkoJo
+LoQDGxecHTQAbG2io21ra2NHhBZUrFQ0VgBQTDw9PLQ8TFdjn4MUPCoqNjRsZGRoampoZ2dl
+ZWldmIlPOjo0XmZaKDLbMiwsNFhmTkuEEUsnL0JiVVBZ7lFZUVJZX1k+H4QNJkY4YFtBK1b8
+qEHwh4skXu4VQqBixY4iHhxInChxwgSKDi4IMsBhBhcYUKLIkzKlypSSVVKqnCCoAAgXYTI4
+oUGzpk2bRSQIEvDghxQOM28KpbmDwaALSZSUaDJUKI8aBQZhuBEiyJAZM7htw6qViAgBvWK0
+UJLDG4uAZ816ywHkAaEFPilk9DhBF0XdE3ZR2L0h4kCmDEpolBhMeLAJwlgrFAoggYRjxyMi
+R4Y8woWJBIYIYNxMUUGlz6BDix5NWlIgADs=
+   }
+
+### tcl-to-C access through critcl
+
+if {$DEBUG} { puts "DEBUG: [package ifneeded critcl [package present critcl]]" }
+
+### hardware access API through the manufacturer's C library; this may need to be added to LD_LIBRARY_PATH at run-time
+critcl::cheaders -I/opt/ASI_linux_mac_SDK_V1.37/include
+critcl::clibraries -L/opt/ASI_linux_mac_SDK_V1.37/lib/x64
+critcl::clibraries -lASICamera2
+
+critcl::ccode {
+  #include <string.h>
+  #include <stdbool.h>
+  #include <tcl.h>
+  #include "ASICamera2.h"
+  static char *YN[2] = { "no", "yes" };
+  }
+
+critcl::cproc ASIGetNumOfConnectedCameras {} int { return ASIGetNumOfConnectedCameras(); }
+
+critcl::cproc ASIConnectToCamera {int CameraID} int {
+  bool res = ASIOpenCamera(CameraID);
+  res += ASIInitCamera(CameraID);
+  return res ? TCL_ERROR : TCL_OK ;
+  }
+
+critcl::cproc ASICloseCamera {int CameraID} int { 
+  bool res = ASIInitCamera(CameraID);
+  res += ASICloseCamera(CameraID);
+  return res ? TCL_ERROR : TCL_OK ;
+  }
+
+critcl::cproc ASIGetCameraInfo {int i} object0 {
+  ASI_CAMERA_INFO cameraInfo;
+  ASIGetCameraProperty(&cameraInfo,i);
+  char str[256], vformats[64] = "", bins[64] = "", dum[64];
+  int j;
+  for (j=0; j<8; j++) {
+    if (cameraInfo.SupportedVideoFormat[j] == ASI_IMG_END ) { break; };
+    strncpy(dum, vformats, 64);
+    sprintf(vformats,"%s %d",dum,cameraInfo.SupportedVideoFormat[j]);
+    }
+  for (j=0; j<16; j++) {
+    if (cameraInfo.SupportedBins[j] == 0 ) { break; };
+    strncpy(dum, bins, 64);
+    sprintf(bins,"%s %d",dum,cameraInfo.SupportedBins[j]);
+    }
+  sprintf(str,"id %d name {%s} width %d height %d bitdepth %d pixelsize %.3fnm colour %s cooler %s shutter %s usb3 %s vformats { %s } bins { %s }", 
+    cameraInfo.CameraID, cameraInfo.Name, 
+    cameraInfo.MaxWidth, cameraInfo.MaxHeight, 
+    cameraInfo.PixelSize, cameraInfo.BitDepth,
+    YN[cameraInfo.IsColorCam], YN[cameraInfo.IsCoolerCam],
+    YN[cameraInfo.MechanicalShutter], YN[cameraInfo.IsUSB3Camera], vformats, bins
+    );
+  Tcl_Obj* ret = Tcl_NewStringObj (str, -1);
+  return ret;
+  }
+
+critcl::cproc ASIGetNumOfControls {int CameraID} int {
+  int nControls = 0;
+  ASIGetNumOfControls(CameraID,&nControls);
+  return nControls;
+  }
+
+critcl::cproc ASIGetControlValue {int CameraID int j} object0 {
+  ASI_CONTROL_CAPS cc;
+  ASIGetControlCaps(CameraID, j, &cc);
+  long lVal;
+  ASI_BOOL bAuto;
+  ASIGetControlValue(CameraID, cc.ControlType, &lVal, &bAuto);
+  char s[128];
+  sprintf(s,"%s {value %ld min %ld max %ld auto %s index %d} ", cc.Name, lVal, cc.MinValue, cc.MaxValue, YN[bAuto], j);
+  Tcl_Obj* ret = Tcl_NewStringObj (s, -1);
+  return ret;
+  }
+
+critcl::cproc ASISetControlValue {int CameraID int j int val int isAuto} int {
+  ASI_CONTROL_CAPS cc;
+  ASIGetControlCaps(CameraID, j, &cc);
+  long lVal = (long)val;
+  ASI_BOOL bAuto = isAuto ? ASI_TRUE : ASI_FALSE;
+  return ASISetControlValue(CameraID, cc.ControlType, lVal, bAuto);
+  }
+
+critcl::cproc ASISetROIFormat {int CameraID int width int height int bin int type } int {
+  return ASISetROIFormat(CameraID, width, height, bin, type);
+  }
+
+critcl::cproc ASIStartExposure {int CameraID} int {
+  return ASIStartExposure(CameraID, ASI_FALSE);
+  }
+
+critcl::cproc ASIGetExpStatus {int id} int {
+  ASI_EXPOSURE_STATUS status;
+  ASIGetExpStatus(id,&status); 
+  return status;
+  }
+
+critcl::cproc ASIStopExposure {int CameraID} int {
+  return ASIStopExposure(CameraID);
+  }
+
+critcl::cproc ASIGetDataAfterExp {int cameraId int imgSize} object0 {
+  unsigned char* imgBuf = ckalloc(imgSize); /* in C:  unsigned char* imgBuf = new unsigned char[imgSize]; */
+  ASIGetDataAfterExp(cameraId, imgBuf, imgSize);
+  Tcl_Obj* ret = Tcl_NewByteArrayObj (imgBuf, imgSize);
+  ckfree(imgBuf);
+  return ret;
+  }
+
+critcl::load
+
+if {$DEBUG} { puts "DEBUG: all critcl subroutines have been declared" }
+
+
+### tcl service routines and C wrappers --------------------------------------------------------
+
+proc DefaultGeometry {} {
+  global DEBUG MIN_W MIN_H
+  set wmW [expr max([winfo screenwidth . ]/2,$MIN_W)]
+  set wmH [expr max([winfo screenheight . ]/2,$MIN_H)]
+  ### dividing by 8 (not 4) places wm . closer to the top left than to bottom right
+  set wmX [expr $wmW / 8]
+  set wmY [expr $wmH / 8]
+  set wmG "${wmW}x${wmH}+${wmX}+${wmY}"
+  if ($DEBUG) { puts "DEBUG: $wmW x $wmH screen detected, shifting by +$wmX,+$wmY" }
+  return $wmG
+  } 
+
+proc setStatus { state message } {
+   global .status.led .status.text
+   if { $state == "ok" } {
+     .status.led configure -background green
+   } elseif { $state == "error" } {
+     .status.led configure -background red
+   } elseif { $state == "warning" } {
+     .status.led configure -background yellow
+   } else {
+     .status.led configure -background white
+     }
+   .status.text configure -text "$message"
+   }
+   
+proc AddZoomStack { g } {
+  global zoomInfo
+  set cmd {}
+  foreach margin { xaxis yaxis x2axis y2axis } {
+    foreach axis [$g $margin use] {
+      set min [$g axis cget $axis -min]; set max [$g axis cget $axis -max]
+      set c [list $g axis configure $axis -min $min -max $max]
+      append cmd "$c\n"
+      }
+    }
+  set zoomInfo($g,stack) [linsert $zoomInfo($g,stack) 0 $cmd]
+  }
+
+proc newVector { name len } {
+  # BLT 2.x allows to re-create existing vectors, but this is cleaner
+  if { [info exists ${name}] } { vector destroy ${name} }
+  if {$len != "" && $len > 0} {
+    vector create ${name}($len)
+  } else {
+    vector create ${name}
+    }
+  }
+
+proc SaveSettings { interactive fname } {
+  global DEBUG settings WorkDir
+  if ($interactive) {
+    set filename [tk_getSaveFile -filetypes { {{Config files} {.cfg .CFG}} {{All Files} *} } \
+      -initialfile [join "[file rootname [file tail $fname]] .cfg" ""] -initialdir $WorkDir]
+    if { $filename == "" } { SetStatus "warning" "Save operation cancelled by user"; return }
+    }\
+  else {
+    set filename ${fname}
+    }
+  if { [catch {set file [open $filename "w"]}] } {
+    SetStatus "error" "Unable to write to \"$filename\", check write permissions"
+    return
+    }\
+  else {
+    SetStatus "ok" "Saving current settings to $filename"
+    foreach paramName [dict keys $settings] {
+      global $paramName ${paramName}_h
+      set pV [set $paramName]
+      set pH [set ${paramName}_h]
+      dict set settings $paramName "v \"$pV\" h \"$pH\""
+      set paramValue [dict get $settings $paramName]
+      if ($DEBUG) { puts "DEBUG: saving $paramName = {$paramValue}"}
+      set pV [dict get $paramValue v]
+      set pH [dict get $paramValue h]
+      if {"$pV"!=""} { puts $file "$paramName\t{v $pV h \"$pH\"}" } \
+      else           { puts $file "$paramName\t{v \"\" h \"$pH\"}" }
+      }
+    close $file
+    }
+  }
+
+proc LoadSettings { interactive fname } {
+  global DEBUG settings WorkDir
+  if ($interactive) {
+    set filename [tk_getOpenFile -filetypes { {{Config files} {.cfg .CFG}} {{All Files} *} } -initialfile $fname -initialdir $WorkDir]
+    if { $filename == "" } { SetStatus "warning" "Load operation cancelled by user"; return }
+    }\
+  else {
+    set filename $fname
+    }
+  if { [catch {set file [open $filename "r"]}] } {
+    if ($DEBUG) { puts "DEBUG: File missing/unable to read \"$filename\", check read permissions" }
+    return
+    }\
+  else {
+    if ($DEBUG) { puts "DEBUG: Loading settings from $filename" }
+    set settings [read $file]
+    close $file
+    UpdateSettings
+    }
+  }
+
+proc UpdateSettings {} {
+  global DEBUG settings
+  foreach paramName [dict keys $settings] {
+    global $paramName ${paramName}_h
+    set paramValue [dict get $settings $paramName]
+    if {$DEBUG} { puts "DEBUG: $paramName = $paramValue"}
+    set $paramName [dict get $paramValue v]
+    set ${paramName}_h [dict get $paramValue h]
+    }
+  }
+
+
+
+### tcl wrappers for the ASI C library
+
+proc findAllCameras {} {
+  global listOfCameras
+  if { [catch {set nCameras [ASIGetNumOfConnectedCameras]}] } { 
+     setStatus "error" " No cameras found, is the power on?"
+     set listOfCameras {}
+     after 1000
+     return
+     }
+  for {set i 0} {$i<$nCameras} {incr i} {
+    if { [catch {ASIConnectToCamera $i}] } {
+      setStatus "error" "Error accessing camera $i, are udev rules installed?"
+      } \
+    else {
+      array set cameraInfo [ASIGetCameraInfo $i]
+      lappend listOfCameras "$cameraInfo(name)"
+      if { [catch {ASICloseCamera $i}] } {
+        setStatus "error" " Error closing a connection to camera $i, should never happen..."
+        after 1000
+        exit 1
+        }
+      }
+    }
+  }
+
+proc getControlCaps { id } {
+  set nControls [ASIGetNumOfControls $id]
+  set allControls ""
+  for {set i 0} {$i<$nControls} {incr i} { 
+    set allControls [concat $allControls [ASIGetControlValue $id $i]]
+    }
+  return $allControls
+  }
+
+proc getControlIndex {name} {
+  global cameraControls
+  if {[info exists cameraControls($name)]} {
+    return [dict get $cameraControls($name) index]
+    } \
+  else {
+    setStatus "error" " Error, control \"$name\" is not known"
+    exit 1
+    }
+  }
+
+proc getValue {id j} {
+  array set A [lindex [ASIGetControlValue $id $j] 1]
+  return $A(value)
+  }
+  
+proc setValue {id j val} {
+  if { [catch {ASISetControlValue $id $j $val 0}] } {
+    setStatus "error" " Error setting control $j to value $val on camera $id"
+    return TCL_ERROR
+    } 
+  set val_now [getValue $id $j]
+  if { $val_now != $val } {
+    setStatus "error" " Error setting control $j to value $val on camera $id, value now is $val_now"
+    return TCL_ERROR
+    } 
+  return TCL_OK
+  }
+
+proc connectCamera {} {
+  global DEBUG listOfCameras cameraId cameraInfo cameraControls
+  set cameraNow [lindex $listOfCameras $cameraId]
+  # open the selected camera
+  if { [catch {ASIConnectToCamera $cameraId}] } {
+    setStatus "error" " Error accessing camera $cameraId, are udev rules installed?"
+    set cameraId -1
+    return TCL_ERROR
+    } 
+  # make sure the properties and controls correspond to the chosen camera
+  array set cameraInfo [ASIGetCameraInfo $cameraId]
+  array set cameraControls [getControlCaps $cameraId]
+  if {$DEBUG} { parray cameraInfo; parray cameraControls }
+  return TCL_OK
+  }
+
+if {$DEBUG} { puts "DEBUG: end of subroutine declarations" }
+
+array set FILE_TYPE { raw {{raw} {.raw}} fits {{FITS} {.fits}} txt {{spectrum} {.txt}} conf {{config} {.cfg}} }
+array set ASI_IMG_TYPE { 0 RAW8 1 RGB24 2 RAW16 3 Y8 }
+array set RAW_IMG_TYPE { 0 {byte} 1 {byte} 2 {short} 3 {byte} }
+
+# default settings
+set nCameras 0
+set listOfCameras [list]
+set cameraId -1
+set cameraNow ""
+set currentTemp ""
+set currentTempC "T=----"
+set targetTemp 15
+set coolerOn 0
+set coolPowerPerc 0
+set expTime 10
+set eunit ms
+set eunits { \u03BCs 1 ms 1000 s 1000000 }
+set imgData ""
+set imgImg [image create photo -palette 65535]
+set zoomFactors { 1 2 4 8 16 }
+set imgZoomDefault 8
+
+set imgType 2
+
+set basefontsize 11
+set fontDefault Arial
+set fontWeight normal
+
+set fontSize(small)  [expr {round($basefontsize * 0.80)}]
+set fontSize(base)   [expr {round($basefontsize)}]
+set fontSize(large)  [expr {round($basefontsize * 1.25)}];# 1.25
+foreach f { TkDefaultFont TkTextFont TkMenuFont TkCaptionFont TkIconFont TkTooltipFont } {
+  font configure $f -family $fontDefault -size $fontSize(base) -weight $fontWeight
+  }
+font configure TkHeadingFont -family $fontDefault -size $fontSize(large) -weight $fontWeight
+font configure TkSmallCaptionFont -family $fontDefault -size $fontSize(small) -weight $fontWeight
+font configure TkFixedFont -family Courier -size $fontSize(base) -weight $fontWeight
+
+# on high-def displays, BLT fonts look too small.  The workaround is to use negative size, 
+# which means size in points and not pixels, but need to correct for [tk scaling]
+# first, create a copy of the defaults font
+font create tabsetFont
+set fopts [font configure TkDefaultFont]
+foreach o [dict keys $fopts] { font configure tabsetFont $o [dict get $fopts $o] }
+# adjust its size
+font configure tabsetFont -size [expr -round([dict get $fopts -size]*[tk scaling])]
+
+### interface --------------------------------------------------------------------------------
+if {$DEBUG} { puts "DEBUG: configuring GUI" }
+
+wm geometry . #wmG; wm title . "$APPNAME v.$VERSION ($PLATFORM)"
+wm minsize . $MIN_W $MIN_H
+wm protocol . WM_DELETE_WINDOW {
+  set answer [tk_messageBox -message "Quit $APPNAME?" -type yesno]
+  if {$answer=="yes"} { set wmG [winfo geometry . ]; SaveSettings 0 $RCNAME; exit }
+  }
+if { [catch {set file [open $RCNAME "r"]}] } {
+  if {$DEBUG} { puts "DEBUG: unable to read $RCNAME, defaulting all settings\n" }
+  set settings [linsert $DEFAULTS 0 WorkDir "v $PWD h \"current work directory\""]
+  set wmG [DefaultGeometry]
+  lappend settings wmG "v $wmG h \"wm geometry\""
+  }\
+else {
+  close $file
+  LoadSettings 0 $RCNAME
+  }
+
+### main window has tabs
+  
+set tabNames $TABS
+
+blt::tabset .ts -bg grey -slant right -gap 2 -tearoff yes -scrollcommand { .st set } -selectbackground white -font tabsetFont
+scrollbar .st -command {.ts view} -orient horizontal
+foreach name $tabNames {.ts insert end $name}
+# status bar is at the bottom of the frame
+frame .status
+label .status.led  -text "" -width 2 -background grey
+label .status.text -text ""
+pack .status -side bottom -fill x
+pack .status.led .status.text -side left
+pack .st -side top -fill x
+pack .ts -expand 1 -fill both
+pack .status -side bottom -fill x
+
+# the first tab is Settings, report/change all control parameters
+#.ts tab select Settings
+frame .ts.settings
+label .ts.settings.label -text "Control Parameters"
+table .ts.settings 0,0 .ts.settings.label -cspan 2
+set i 1
+foreach paramName [dict keys $settings] {
+  global $paramName ${paramName}_h
+  label .ts.settings.l_${paramName} -text "$paramName"
+  entry .ts.settings.v_${paramName} -textvariable $paramName
+  label .ts.settings.h_${paramName} -text [set [set paramName]_h]
+  table .ts.settings \
+    $i,0 .ts.settings.l_${paramName} -anchor e \
+    $i,1 .ts.settings.v_${paramName} \
+    $i,2 .ts.settings.h_${paramName} -anchor w
+  incr i
+  }
+  
+frame .ts.settings.actions
+button .ts.settings.actions.saveConfig -text "Save .cfg" -bg LightGreen -command {SaveSettings 1 $File}
+button .ts.settings.actions.loadConfig -text "Load .cfg" -bg LightGreen -command {LoadSettings 1 $File}
+button .ts.settings.dePake -text "Go" -bg LightGreen -command { dePake go }
+
+pack .ts.settings.actions.saveConfig .ts.settings.actions.loadConfig -side left
+table .ts.settings $i,0 .ts.settings.actions -cspan 2
+table .ts.settings $i,2 .ts.settings.dePake
+table configure .ts.settings -propagate true
+
+.ts tab configure Settings -window .ts.settings -anchor n
+
+
+
+### tcl main code ----------------------------------------------------------------------------
+
+

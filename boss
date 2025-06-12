@@ -523,9 +523,49 @@ table .ts.settings $i,0 .ts.settings.actions -cspan 2
 table .ts.settings $i,2 .ts.settings.dePake
 table configure .ts.settings -propagate true
 
-.ts tab configure Settings -window .ts.settings -anchor n
+.ts tab configure Settings -window .ts.settings -anchor nw
 
+set imgImg [image create photo -palette 65535 -width $MIN_W -height $MIN_H]
 
+set v_size 100
+set v_shift 0
+set h_size [image width $imgImg]$MIN_W
+set h_shift 0
+set max_v_shift [expr [image height $imgImg] - $v_size/2 - 1]
+
+vector create ::x($h_size) ::y($h_size) ::z
+::x seq 0 $h_size-1
+
+#frame .ts.lv
+
+#.ts tab configure LiveView -window .ts.lv -anchor nw
+
+frame .ts.sp
+graph .ts.sp.g -width 900 -height 600 -bd 2 -relief groove
+.ts.sp.g axis configure x -title "pixel #" -min $h_shift -max [expr $h_shift + $h_size]
+.ts.sp.g element create spectrum -xdata ::x -ydata ::y -symbol "" -linewidth 1 -color magenta
+.ts.sp.g marker create image -image $imgImg -under yes -name bg
+.ts.sp.g marker configure bg -coords "$::x(min) $::y(min) $::x(max) $::y(max)"
+.ts.sp.g marker create line -outline cyan -linewidth 1 -name _top
+.ts.sp.g marker create line -outline cyan -linewidth 1 -name _bot
+
+frame .ts.sp.rbar
+scale .ts.sp.rbar.vs -variable v_shift -from 0 -to [expr [image height $imgImg] - $v_size -1] -command { } -showvalue true -orient vertical
+label .ts.sp.rbar.ly0 -text "ROI"
+entry .ts.sp.rbar.y0 -textvariable v_shift -width 5 -validate focus -vcmd  {string is int %P}
+bind .ts.sp.rbar.y0 <Return> { }
+label .ts.sp.rbar.ldy -text " x "
+entry .ts.sp.rbar.dy -textvariable v_size -width 5 -validate focus -vcmd  {string is int %P}
+bind .ts.sp.rbar.dy <Return> { }
+label .ts.sp.rbar.fill -text " "
+pack .ts.sp.rbar -side right -fill y
+pack .ts.sp.rbar.ly0 .ts.sp.rbar.y0 -side top
+pack .ts.sp.rbar.fill .ts.sp.rbar.dy .ts.sp.rbar.ldy -side bottom
+pack .ts.sp.rbar.vs -expand 1 -fill both
+
+pack .ts.sp.g  -expand 1  -fill both
+
+.ts tab configure Spectrum -window .ts.sp -anchor nw
 
 ### tcl main code ----------------------------------------------------------------------------
 

@@ -10,7 +10,7 @@ LD_LIBRARY_PATH="/opt/ASI_linux_mac_SDK_V1.37/lib/x64:$LD_LIBRARY_PATH" exec wis
 
 ###
 ### Written by edward.sternin@brocku.ca
-### 2025.06: initial release, tk8.6 RedHat8, tk8.6 Ubuntu 24.04LTS, for ASI294MM (mono) camera
+### 2025.06: initial release, tk8.6 Ubuntu 24.04LTS, for ASI294MM and ASI2600MM (mono) cameras
 ###
 
 set APPNAME     [lindex [file split [info script]] end]
@@ -18,12 +18,21 @@ set PLATFORM    [lindex [array get tcl_platform os] 1]
 set VERSION     2025.06.11
 set PWD         [pwd]
 set RCNAME      [file join [cd; pwd] .${APPNAME}rc]
-set MIN_W       640
-set MIN_H       480
+set MIN_W       1080
+set MIN_H       720
 set DEBUG       0
 set TABS        {Settings LiveView Spectrum}
+
+set zoomFactors { 16 8 4 2 1 }
+set imgZoomDefault 4
+
 set DEFAULTS    {
-  File          {v {test.dat}   h "extensions .raw/.dat/.cfg vary as needed"}
+#  File          {v {test.dat}   h "extensions .raw/.dat/.cfg vary as needed"}
+  targetTemp    {v 5		h "sensor cooling target, down to 35\u00B0C below ambient" }
+  expTime	{v 100 		h "exposure time" }
+  eunit		{v "ms"		h "time units" }
+  imgZoom	{v 4		h "camera image zoom factor" }
+  currentROI	{v "0 1200 2821 1250" h "Region Of Interest, in pixels"}
   }
 
 
@@ -51,24 +60,19 @@ else {
     set ::tk::dialog::file::showHiddenBtn 1
     set ::tk::dialog::file::showHiddenVar 0
     }
-  }
-  
+  } 
 if { [catch {package require Tcl; package require tcl::chan::string; package require base64 }] } {
   puts stderr "tcllib is missing, maybe `sudo apt-get install tclib`\n"; exit 1
-  }
-  
+  }  
 if { [catch {package require Img; package require img::raw}] } {
   puts stderr "Img package is missing, maybe `sudo apt-get install img`\n"; exit 1
   }
-
 if { [catch {package require BWidget}] } {
   puts stderr "BWidget package is missing, maybe `sudo apt-get install bwidget`\n"; exit 1
   }
-
 if { [catch {package require critcl}] } {
   puts stderr "critcl package is missing, maybe `sudo apt-get install critcl`\n"; exit 1
   }
-
 if { [catch {set BLTversion [package require BLT]}] } {
   puts stderr "BLT package is missing, maybe `sudo apt-get install blt`\n"; exit 1
   }
@@ -115,7 +119,11 @@ critcl::cproc ASIGetNumOfConnectedCameras {} int { return ASIGetNumOfConnectedCa
 
 critcl::cproc ASIConnectToCamera {int CameraID} int {
   bool res = ASIOpenCamera(CameraID);
-  res += ASIInitCamera(CameraID);
+  return res ? TCL_ERROR : TCL_OK ;
+  }
+
+critcl::cproc ASIInitCamera {int CameraID} int {
+  bool res = ASIInitCamera(CameraID);
   return res ? TCL_ERROR : TCL_OK ;
   }
 
@@ -123,6 +131,12 @@ critcl::cproc ASICloseCamera {int CameraID} int {
   bool res = ASIInitCamera(CameraID);
   res += ASICloseCamera(CameraID);
   return res ? TCL_ERROR : TCL_OK ;
+  }
+
+critcl::cproc ASIGetCameraMode {int i} int {
+  ASI_CAMERA_MODE cameraMode;
+  ASIGetCameraMode(i,&cameraMode);
+  return cameraMode;
   }
 
 critcl::cproc ASIGetCameraInfo {int i} object0 {
@@ -140,7 +154,7 @@ critcl::cproc ASIGetCameraInfo {int i} object0 {
     strncpy(dum, bins, 64);
     sprintf(bins,"%s %d",dum,cameraInfo.SupportedBins[j]);
     }
-  sprintf(str,"id %d name {%s} width %d height %d bitdepth %d pixelsize %.3fnm colour %s cooler %s shutter %s usb3 %s vformats { %s } bins { %s }", 
+  sprintf(str,"id %d name {%s} width %ld height %ld bitdepth %ld pixelsize %.3fnm colour %s cooler %s shutter %s usb3 %s vformats { %s } bins { %s }", 
     cameraInfo.CameraID, cameraInfo.Name, 
     cameraInfo.MaxWidth, cameraInfo.MaxHeight, 
     cameraInfo.PixelSize, cameraInfo.BitDepth,
@@ -207,8 +221,16 @@ critcl::load
 
 if {$DEBUG} { puts "DEBUG: all critcl subroutines have been declared" }
 
-
 ### tcl service routines and C wrappers --------------------------------------------------------
+
+proc setStatus { state message } {
+   global .status.led .status.text
+   if     { $state == "ok" }      { .status.led configure -background lightgreen }\
+   elseif { $state == "error" }   { .status.led configure -background red }\
+   elseif { $state == "warning" } { .status.led configure -background yellow }\
+   else                           { .status.led configure -background white }
+   .status.text configure -text "$message"
+   }
 
 proc DefaultGeometry {} {
   global DEBUG MIN_W MIN_H
@@ -221,20 +243,6 @@ proc DefaultGeometry {} {
   if ($DEBUG) { puts "DEBUG: $wmW x $wmH screen detected, shifting by +$wmX,+$wmY" }
   return $wmG
   } 
-
-proc SetStatus { state message } {
-   global .status.led .status.text
-   if { $state == "ok" } {
-     .status.led configure -background green
-   } elseif { $state == "error" } {
-     .status.led configure -background red
-   } elseif { $state == "warning" } {
-     .status.led configure -background yellow
-   } else {
-     .status.led configure -background white
-     }
-   .status.text configure -text "$message"
-   }
    
 proc AddZoomStack { g } {
   global zoomInfo
@@ -264,17 +272,17 @@ proc SaveSettings { interactive fname } {
   if ($interactive) {
     set filename [tk_getSaveFile -filetypes { {{Config files} {.cfg .CFG}} {{All Files} *} } \
       -initialfile [join "[file rootname [file tail $fname]] .cfg" ""] -initialdir $WorkDir]
-    if { $filename == "" } { SetStatus "warning" "Save operation cancelled by user"; return }
+    if { $filename == "" } { setStatus "warning" "Save operation cancelled by user"; return }
     }\
   else {
     set filename ${fname}
     }
   if { [catch {set file [open $filename "w"]}] } {
-    SetStatus "error" "Unable to write to \"$filename\", check write permissions"
+    setStatus "error" "Unable to write to \"$filename\", check write permissions"
     return
     }\
   else {
-    SetStatus "ok" "Saving current settings to $filename"
+    setStatus "ok" "Saving current settings to $filename"
     foreach paramName [dict keys $settings] {
       global $paramName ${paramName}_h
       set pV [set $paramName]
@@ -284,18 +292,17 @@ proc SaveSettings { interactive fname } {
       if ($DEBUG) { puts "DEBUG: saving $paramName = {$paramValue}"}
       set pV [dict get $paramValue v]
       set pH [dict get $paramValue h]
-      if {"$pV"!=""} { puts $file "$paramName\t{v $pV h \"$pH\"}" } \
-      else           { puts $file "$paramName\t{v \"\" h \"$pH\"}" }
+      puts $file "$paramName\t{v \"$pV\" h \"$pH\"}" 
       }
     close $file
     }
   }
 
 proc LoadSettings { interactive fname } {
-  global DEBUG settings WorkDir
+  global DEBUG settings WorkDir imgZoom targetTemp expTime eunit
   if ($interactive) {
     set filename [tk_getOpenFile -filetypes { {{Config files} {.cfg .CFG}} {{All Files} *} } -initialfile $fname -initialdir $WorkDir]
-    if { $filename == "" } { SetStatus "warning" "Load operation cancelled by user"; return }
+    if { $filename == "" } { setStatus "warning" "Load operation cancelled by user"; return }
     }\
   else {
     set filename $fname
@@ -405,15 +412,358 @@ proc connectCamera {} {
   return TCL_OK
   }
 
-if {$DEBUG} { puts "DEBUG: end of subroutine declarations" }
+array set FILE_TYPE { raw {{raw} {.raw}} txt {{spectrum} {.txt}} conf {{config} {.cfg}} }
 
-array set FILE_TYPE { raw {{raw} {.raw}} fits {{FITS} {.fits}} txt {{spectrum} {.txt}} conf {{config} {.cfg}} }
 array set ASI_IMG_TYPE { 0 RAW8 1 RGB24 2 RAW16 3 Y8 }
 array set RAW_IMG_TYPE { 0 {byte} 1 {byte} 2 {short} 3 {byte} }
+
+array set ASI_ERROR_CODE {
+   0 ASI_SUCCESS
+   1 ASI_ERROR_INVALID_INDEX
+   2 ASI_ERROR_INVALID_ID
+   3 ASI_ERROR_INVALID_CONTROL_TYPE
+   4 ASI_ERROR_CAMERA_CLOSED
+   5 ASI_ERROR_CAMERA_REMOVED
+   6 ASI_ERROR_INVALID_PATH
+   7 ASI_ERROR_INVALID_FILEFORMATASI_CAMERA_MODE
+   8 ASI_ERROR_INVALID_SIZE
+   9 ASI_ERROR_INVALID_IMGTYPE
+  10 ASI_ERROR_OUTOF_BOUNDARY
+  11 ASI_ERROR_TIMEOUT
+  12 ASI_ERROR_INVALID_SEQUENCE
+  13 ASI_ERROR_BUFFER_TOO_SMALLASI_CAMERA_MODE
+  14 ASI_ERROR_VIDEO_MODE_ACTIVE
+  15 ASI_ERROR_EXPOSURE_IN_PROGRESS
+  16 ASI_ERROR_GENERAL_ERROR
+  }
+
+array set ASI_EXPOSURE_STATUS {
+   0 IDLE
+   1 WORKING
+   2 SUCCESS
+   3 FAILED
+   }
+
+array set ASI_CAMERA_MODE {
+   0 ASI_MODE_NORMAL
+   1 ASI_MODE_TRIG_SOFT_EDGE
+   2 ASI_MODE_TRIG_RISE_EDGE
+   3 ASI_MODE_TRIG_FALL_EDGE
+   4 ASI_MODE_TRIG_SOFT_LEVEL
+   5 ASI_MODE_TRIG_HIGH_LEVEL
+   6 ASI_MODE_TRIG_LOW_LEVEL
+   } 
+
+proc findAllCameras {} {
+  global listOfCameras
+  if { [catch {set nCameras [ASIGetNumOfConnectedCameras]}] } { 
+     setStatus "error" " No cameras found, is the power on?"
+     set listOfCameras {}
+     after 1000
+     return
+     }
+  for {set i 0} {$i<$nCameras} {incr i} {
+    if { [catch {ASIConnectToCamera $i}] } {
+      setStatus "error" "Error accessing camera $i, are udev rules installed?"
+      } \
+    else {
+      array set cameraInfo [ASIGetCameraInfo $i]
+      lappend listOfCameras "$cameraInfo(name)"
+      if { [catch {ASICloseCamera $i}] } {
+        setStatus "error" " Error closing a connection to camera $i, should never happen..."
+        after 1000
+        exit 1
+        }
+      }
+    }
+  }
+
+proc getControlCaps { id } {
+  #global DEBUG
+  set nControls [ASIGetNumOfControls $id]
+  set allControls ""
+  for {set i 0} {$i<$nControls} {incr i} { 
+    set allControls [concat $allControls [ASIGetControlValue $id $i]]
+    #if {$DEBUG} {puts "DEBUG: control $i: [ASIGetControlValue $id $i]" }
+    }
+  return $allControls
+  }
+
+proc getControlIndex {name} {
+  global cameraControls
+  if {[info exists cameraControls($name)]} {
+    return [dict get $cameraControls($name) index]
+    } \
+  else {
+    setStatus "error" " Error, control \"$name\" is not known"
+    exit 1
+    }
+  }
+
+proc getValue {id j} {
+  array set A [lindex [ASIGetControlValue $id $j] 1]
+  return $A(value)
+  }
+  
+proc setValue {id j val} {
+  if { [catch {ASISetControlValue $id $j $val 0}] } {
+    setStatus "error" " Error setting control $j to value $val on camera $id"
+    return TCL_ERROR
+    } 
+  set val_now [getValue $id $j]
+  if { $val_now != $val } {
+    setStatus "error" " Error setting control $j to value $val on camera $id, value now is $val_now"
+    return TCL_ERROR
+    } 
+  return TCL_OK
+  }
+
+proc connectCamera {} {
+  global DEBUG listOfCameras cameraId 
+  set cameraNow [lindex $listOfCameras $cameraId]
+  # open the selected camera
+  if { [catch {ASIConnectToCamera $cameraId}] } {
+    setStatus "error" " Error accessing camera $cameraId, are udev rules installed?"
+    set cameraId -1
+    return TCL_ERROR
+    }
+  if {$DEBUG} { puts "DEBUG: camera $cameraId connected" }
+  return TCL_OK
+  }
+
+proc resetCamera {} {
+  global DEBUG cameraId cameraInfo cameraControls
+  if {$cameraId < 0} {
+    setStatus "warning" "There is no camera connected"
+    return
+    }
+  # initialize the selected camera
+  if { [catch {ASIInitCamera $cameraId}] } {
+    setStatus "error" " Error initializing camera $cameraId, disconnecting"
+    ASICloseCamera $cameraId
+    .tbar.reset configure -fg gray
+    .tbar.snap configure -fg gray
+    set cameraId -1
+    return TCL_ERROR
+    }
+  # make sure the properties and controls correspond to the chosen camera
+  array set cameraInfo [ASIGetCameraInfo $cameraId]
+  array set cameraControls [getControlCaps $cameraId]
+  if {$DEBUG} { parray cameraInfo; parray cameraControls }
+  return TCL_OK
+  }
+
+proc toggleCoolerOn {} {
+  global coolerOn cameraId targetTemp 
+  if {$cameraId < 0} {
+    setStatus "error" "Need to connect to a camera first"
+    return TCL_ERROR
+    }
+  set backgrounds {grey white}
+  set foregrounds {black cyan}
+  set labels {OFF ON}
+  set coolerOn [expr {$coolerOn ? 0 : 1}]
+  if {$coolerOn} { setValue $cameraId [getControlIndex TargetTemp] $targetTemp }
+  setValue $cameraId [getControlIndex CoolerOn] $coolerOn
+  .ts.lv.tbar.cool configure -bg [lindex $backgrounds $coolerOn] -fg [lindex $foregrounds $coolerOn]
+  setStatus "ok" "Sensor cooler is [lindex $labels $coolerOn]"
+  return TCL_OK
+  }
+
+proc updateExpTime {} {
+  global cameraControls expTime eunits eunit
+  set t [expr $expTime * [dict get $eunits $eunit]]
+  set t_min [dict get $cameraControls(Exposure) min]
+  set t_max [dict get $cameraControls(Exposure) max]
+  if {$t<$t_min} { set t $t_min }
+  if {$t>$t_max} { set t $t_max }
+  set expTime [expr $t / [dict get $eunits $eunit]]
+  setStatus "ok" "Exposure time set to $expTime$eunit = $t \u03BCs" 
+  }
+
+
+proc getSnapshot {} {
+  global DEBUG run cameraId cameraInfo cameraControls expTime eunits eunit \
+         ASI_IMG_TYPE RAW_IMG_TYPE ASI_ERROR_CODE ASI_EXPOSURE_STATUS ASI_CAMERA_MODE \
+         imgData imgType imgImg imgWidth imgHeight
+  #set imgType 2
+  # bin1 correspond to the max resolution, but for ASI294 that is interpolated, use bin2 to match sensor resolution
+  if {$cameraInfo(name) == "ZWO ASI294MM Pro" } { set binType 2 } else { set binType 1 }
+  set imgWidth [expr $cameraInfo(width) / $binType]
+  set imgHeight [expr $cameraInfo(height) / $binType]
+  if {$DEBUG} { puts "DEBUG: image ${imgWidth}x${imgHeight}, type=$imgType \u2208($cameraInfo(vformats)), bin=$binType \u2208($cameraInfo(bins))" }
+
+  set delayLoopCount 0
+  ASISetROIFormat $cameraId $imgWidth $imgHeight $binType $imgType
+  after 10
+  setValue $cameraId [dict get $cameraControls(Gain) index] 0
+  set t [expr $expTime * [dict get $eunits $eunit]]
+  setValue $cameraId [dict get $cameraControls(Exposure) index] $t
+  set status [ASIStartExposure $cameraId]
+  if {"$ASI_ERROR_CODE($status)" != "ASI_SUCCESS"} { 
+    setStatus "error" "StartExposure reports $ASI_ERROR_CODE($status), aborting"
+    return
+    }\
+  else {
+    if {$DEBUG} { puts "DEBUG: exposure successfully set to [getValue $cameraId [getControlIndex Exposure]] \u03BCs" }
+    }
+  after 10
+  image delete $imgImg
+  set imgImg [image create photo -palette 65536 -width $imgWidth -height $imgHeight]
+  set imgSize [expr $imgWidth * $imgHeight * (1 + [expr {"$ASI_IMG_TYPE($imgType)"=="RAW16"}])] 
+  set delayLoopCount 0
+  set TIME_STEP 100
+  set maxLoopCount [expr $t / ($TIME_STEP*1000) + 10]; # 10 extra steps = 1s, to make sure
+  if {$DEBUG} { puts "DEBUG: expect LoopCount to not exceed $maxLoopCount" }
+  while { $delayLoopCount < $maxLoopCount } {
+    incr delayLoopCount
+    set status [ASIGetExpStatus $cameraId]
+    if {$DEBUG} { puts "DEBUG: exposure $ASI_EXPOSURE_STATUS($status) ($delayLoopCount)" }
+    if {"$ASI_EXPOSURE_STATUS($status)" == "WORKING"} {
+      after $TIME_STEP
+      setStatus "warning" "Waiting ($delayLoopCount) for exposure to complete [format %.1f [expr $delayLoopCount * $TIME_STEP/1000.0]]s"
+      update
+      }\
+    elseif {"$ASI_EXPOSURE_STATUS($status)" == "SUCCESS"} { 
+      set imgData [ASIGetDataAfterExp $cameraId $imgSize]
+      if {$DEBUG} { puts "DEBUG: [expr $imgWidth * $imgHeight] pixels requested, [expr [string length $imgData]/2] pixels received" }
+      setStatus "ok" "Exposure completed in [format %.1f [expr $delayLoopCount * $TIME_STEP/1000.0]] s"; update
+      $imgImg put "Magic=RAW\nWidth=$imgWidth\nHeight=$imgHeight\nNumChan=1\nByteOrder=Intel\nScanOrder=TopDown\nPixelType=$RAW_IMG_TYPE($imgType)\n$imgData" -format raw
+      break
+      } \
+    elseif {"$ASI_EXPOSURE_STATUS($status)" == "FAILED"} {
+      setStatus "error" "Exposure FAILED, aborting and resetting the camera"
+      update; after 1000;
+      if { [catch {ASIInitCamera $cameraId}] } {
+        setStatus "error" " Error initializing camera $i, should never happen..."
+        after 1000
+        return
+        }
+      break
+      }
+    }
+  if { $delayLoopCount >= $maxLoopCount } {
+    setStatus "error" "Exposure for [format %.1f [expr $t/1e6]]s did not complete in [format %.1f [expr $delayLoopCount * $TIME_STEP/1000.0]]s"
+    update
+    }
+  set status [ASIStopExposure $cameraId]
+  if {"$ASI_ERROR_CODE($status)" != "ASI_SUCCESS"} { 
+    setStatus "error" "StopExposure reports $ASI_ERROR_CODE($status), aborting"
+    return
+    }
+  after 10
+  if {$DEBUG} {
+    puts "DEBUG: image acquired in $delayLoopCount tries, with a [format %.1f [expr $delayLoopCount * 0.2]]-s delay:"
+    puts "  AutoExpTargetBrightness = [getValue $cameraId [getControlIndex AutoExpTargetBrightness]]"
+    puts "  AutoExpMaxGain = [getValue $cameraId [getControlIndex AutoExpMaxGain]]"
+    puts "  Exposure = [getValue $cameraId [getControlIndex Exposure]]"
+    puts "  Gain = [getValue $cameraId [getControlIndex Gain]]"
+    puts "  Temperature = [expr [getValue $cameraId [getControlIndex Temperature]] / 10.0]\u00B0C"
+    }
+  displayImg
+  }
+
+proc displayImg {} { 
+  global imgData imgZoom imgImg DEBUG
+  set im [image create photo -palette 65536]
+  $im copy $imgImg -subsample $imgZoom
+  .ts.lv.main.c itemconfigure mainImg -anchor nw -image $im
+  set w [expr max([winfo vrootwidth .ts.lv]-100,[image width $im]/$imgZoom+2)]
+  set h [expr max([winfo vrootheight .ts.lv]-200,[image height $im]/$imgZoom+2)]
+  .ts.lv.main.c configure -scrollregion [.ts.lv.main.c bbox all] -width $w -height $h 
+  unset im
+  setStatus "ok" "Displaying a [image width $imgImg]x[image height $imgImg] image on ${w}x$h canvas, @ zoom=1:$imgZoom"
+  update
+  }
+
+proc displaySpectrum {x1 y1 x2 y2} {
+  global DEBUG ::x ::y imgImg imgW imgH h_size v_size
+  set h_size [expr $x2 - $x1]
+  set v_size [expr $y2 - $y1]
+  set imgH [image height $imgImg]
+  set imgW [image width $imgImg]
+  if {[expr $imgW*$imgH] == 0} { setStatus "error" "there is no image to analyze"; return } 
+  #set AOI ""
+  set AOI [base64::decode [$imgImg data -format raw -grayscale -from $x1 $y1 $x2 $y2]]
+  #set AOI [$imgImg data -format raw -grayscale -from $x1 $y1 $x2 $y2] 
+  set headerLength [expr [string length $AOI] - $h_size*$v_size - 1 ]
+  if {$DEBUG} {puts "DEBUG: header of $headerLength bytes is:\n[string range $AOI 0 $headerLength]" }
+  set AOI [string range $AOI $headerLength end-1]
+  if {$DEBUG} { puts "DEBUG: AOI is $imgH x $imgW, [string length $AOI] bytes" }
+  set cp [::tcl::chan::string $AOI]
+  vector create ::z ::col
+  ::z binread $cp -format "u2"; ::z matrix numcols $h_size
+  chan close $cp
+  unset AOI
+  newVector ::x $h_size
+  newVector ::y $h_size
+  ::x seq 0 $h_size-1
+  set j_max [expr $h_size/2]
+  ###set tt [time {
+  #the raw format is interlaced, it assumes PixelType=byte, and we use two-byte "short"
+  for {set j 0} {$j < $j_max} {incr j} {
+    ::col set [::z matrix get $j]
+    set ::y(2*$j) $::col(sum)
+    set j2 [expr $j_max+$j]
+    ::col set [::z matrix get $j2]
+    set ::y(2*$j+1) $::col(sum)
+    }
+  ###}]
+  ###puts "Summing up $h_size columns of length $v_size took [format %.3f [expr [lindex $tt 0] / 1000]] ms"; unset tt
+  vector destroy ::col ::z
+
+  .ts.sp.g marker configure bg -image $imgImg
+  .ts.sp.g element configure spectrum -xdata ::x -ydata ::y 
+  .ts.sp.g xaxis configure -min $::x(min) -max $::x(max)
+  .ts.sp.g yaxis configure -min $::y(min) -max $::y(max)
+  .ts.sp.g marker configure bg -coords "$::x(min) $::y(min) $::x(max) $::y(max)"
+  set y_top [expr $::y(max)-($::y(max)-$::y(min))*$y1/$imgH]
+  .ts.sp.g marker configure _top -coords "$::x(min) $y_top $::x(max) $y_top"
+  set y_bot [expr $::y(max)-($::y(max)-$::y(min))*$y2/$imgH]
+  .ts.sp.g marker configure _bot -coords "$::x(min) $y_bot $::x(max) $y_bot"
+  .ts.sp.rbar.vs configure -from 0 -to [expr $imgH - $v_size -1]
+  .ts.sp.rbar.vs set $y1
+  }
+
+proc powerOff {} {
+  global DEBUG run cameraId
+  set run false
+  if {$DEBUG} { puts "DEBUG: closing the camera connection" }
+  after 100
+  if {$cameraId < 0} {exit}
+  if { [catch {ASICloseCamera $cameraId}] } {
+    setStatus "error" "Error closing a connection to camera $cameraId, should never happen..."
+    update; after 1000; exit 1
+    }
+  exit
+  }
+
+proc atXhairs { g } {
+  global DEBUG ::x ::y 
+  if { ![winfo exists $g] } { return }
+  set wxy [split [$g crosshairs cget -position] "," ];# window x,y
+  set wx [string range [lindex $wxy 0] 1 end]; set wy [lindex $wxy 1]
+  set sxy [$g invtransform [expr $wx] [expr $wy]]
+  set sx [lindex $sxy 0]; set sy [lindex $sxy 1];# data x,y
+  .ts.sp.rbar.x configure -text "[format {%d} [expr {int($sx)}]]"
+  .ts.sp.rbar.y configure -text "[format {%.3e} $sy]"
+  }
+
+
+if {$DEBUG} { puts "DEBUG: end of subroutine declarations" }
 
 set basefontsize 11
 set fontDefault Arial
 set fontWeight normal
+
+# on high-def displays, BLT fonts look too small.  The workaround is to use negative size, 
+# which means size in points and not pixels, but need to correct for [tk scaling]
+# first, create a copy of the defaults font
+font create tabsetFont
+set fopts [font configure TkDefaultFont]
+foreach o [dict keys $fopts] { font configure tabsetFont $o [dict get $fopts $o] }
+# adjust its size
+font configure tabsetFont -size [expr -round([dict get $fopts -size]*[tk scaling])]
 
 set fontSize(small)  [expr {round($basefontsize * 0.80)}]
 set fontSize(base)   [expr {round($basefontsize)}]
@@ -424,15 +774,6 @@ foreach f { TkDefaultFont TkTextFont TkMenuFont TkCaptionFont TkIconFont TkToolt
 font configure TkHeadingFont -family $fontDefault -size $fontSize(large) -weight $fontWeight
 font configure TkSmallCaptionFont -family $fontDefault -size $fontSize(small) -weight $fontWeight
 font configure TkFixedFont -family Courier -size $fontSize(base) -weight $fontWeight
-
-# on high-def displays, BLT fonts look too small.  The workaround is to use negative size, 
-# which means size in points and not pixels, but need to correct for [tk scaling]
-# first, create a copy of the defaults font
-font create tabsetFont
-set fopts [font configure TkDefaultFont]
-foreach o [dict keys $fopts] { font configure tabsetFont $o [dict get $fopts $o] }
-# adjust its size
-font configure tabsetFont -size [expr -round([dict get $fopts -size]*[tk scaling])]
 
 # default settings
 set nCameras 0
@@ -449,10 +790,25 @@ set eunit ms
 set eunits { \u03BCs 1 ms 1000 s 1000000 }
 set imgData ""
 set imgImg [image create photo -palette 65535]
-set zoomFactors { 1 2 4 8 16 }
-set imgZoomDefault 8
-
+set imgZoom $imgZoomDefault
 set imgType 2
+set imgH $MIN_H
+set imgW $MIN_W
+set currentROI "0 [expr $imgH/2] $imgW [expr $imgH/2+50]"
+
+set basefontsize 11
+set fontDefault Arial
+set fontWeight normal
+
+set fontSize(small)  [expr {round($basefontsize * 0.80)}]
+set fontSize(base)   [expr {round($basefontsize)}]
+set fontSize(large)  [expr {round($basefontsize * 1.25)}];# 1.25
+foreach f { TkDefaultFont TkTextFont TkMenuFont TkCaptionFont TkIconFont TkTooltipFont } {
+  font configure $f -family $fontDefault -size $fontSize(base) -weight $fontWeight
+  }
+font configure TkHeadingFont -family $fontDefault -size $fontSize(large) -weight $fontWeight
+font configure TkSmallCaptionFont -family $fontDefault -size $fontSize(small) -weight $fontWeight
+font configure TkFixedFont -family Courier -size $fontSize(base) -weight $fontWeight
 
 if { [catch {set file [open $RCNAME "r"]}] } {
   if {$DEBUG} { puts "DEBUG: unable to read $RCNAME, defaulting all settings\n" }
@@ -465,6 +821,11 @@ else {
   LoadSettings 0 $RCNAME
   }
 UpdateSettings
+set v_shift [expr [lindex $currentROI 1]]
+set v_size [expr [lindex $currentROI 3] - [lindex $currentROI 1]]
+set h_shift [expr [lindex $currentROI 0]]
+set h_size [expr [lindex $currentROI 2] - [lindex $currentROI 0]]
+
 cd "$WorkDir" 
 if {$DEBUG} { puts "DEBUG: in $WorkDir" }
 
@@ -475,7 +836,7 @@ wm geometry . $wmG; wm title . "$APPNAME v.$VERSION ($PLATFORM)"
 wm minsize . $MIN_W $MIN_H
 wm protocol . WM_DELETE_WINDOW {
   set answer [tk_messageBox -message "Quit $APPNAME?" -type yesno]
-  if {$answer=="yes"} { set wmG [winfo geometry . ]; SaveSettings 0 $RCNAME; exit }
+  if {$answer=="yes"} { set wmG [winfo geometry . ]; SaveSettings 0 $RCNAME; powerOff }
   }
 
 ### main window has tabs
@@ -523,50 +884,188 @@ table .ts.settings $i,0 .ts.settings.actions -cspan 2
 table .ts.settings $i,2 .ts.settings.dePake
 table configure .ts.settings -propagate true
 
-.ts tab configure Settings -window .ts.settings -anchor nw
+.ts tab configure Settings -window .ts.settings -anchor n
 
-set imgImg [image create photo -palette 65535 -width $MIN_W -height $MIN_H]
+vector create ::x
+vector create ::y
+vector create ::z
 
-set v_size 100
-set v_shift 0
-set h_size [image width $imgImg]$MIN_W
-set h_shift 0
-set max_v_shift [expr [image height $imgImg] - $v_size/2 - 1]
+# the second tab is a live view of the camera field, snapshot or continuous
 
-vector create ::x($h_size) ::y($h_size) ::z
-::x seq 0 $h_size-1
+frame .ts.lv
 
-#frame .ts.lv
+frame .ts.lv.tbar -relief raised -borderwidth 1
+menubutton .ts.lv.tbar.file -text "File" -relief raised -menu .ts.lv.tbar.file.m 
+menu .ts.lv.tbar.file.m -tearoff 0
+  .ts.lv.tbar.file.m add command -label "Save img" -command { saveFile }
+  .ts.lv.tbar.file.m add command -label "Load img" -command { loadFile raw }
+  .ts.lv.tbar.file.m add separator
+  .ts.lv.tbar.file.m add command -label "Save ROI" -command { saveFile }
+  .ts.lv.tbar.file.m add command -label "Load ROI" -command { loadFile raw }
 
-#.ts tab configure LiveView -window .ts.lv -anchor nw
+label .ts.lv.tbar.lvdev -text " camera=" 
+ComboBox .ts.lv.tbar.vdev -textvariable cameraNow -values $listOfCameras -modifycmd {
+  set cameraId [lsearch $listOfCameras $cameraNow]
+  setStatus "ok" "Camera $cameraId: $cameraNow selected"
+  connectCamera; resetCamera
+  }
+button .ts.lv.tbar.reset -text "\u27F3" -fg grey -command { resetCamera }
+
+proc adjustTargetTemp {} { 
+  global cameraId targetTemp
+  setStatus "ok" "Target is now $targetTemp\u00B0C"
+  setValue $cameraId [getControlIndex TargetTemp] $targetTemp
+  }
+spinbox .ts.lv.tbar.target -textvariable targetTemp -width 3 -command { adjustTargetTemp }
+#bind .ts.lv.tbar.target <Leave> { adjustTargetTemp }
+bind .ts.lv.tbar.target <Return> { adjustTargetTemp }
+
+label .ts.lv.tbar.ltemp  -text "  target="
+label .ts.lv.tbar.temp  -textvariable currentTempC
+label .ts.lv.tbar.ltarget -text "\u00B0C  pwr=---%"
+ttk::progressbar .ts.lv.tbar.coolbar -orient vertical -length 33 -mode determinate -variable coolPowerPerc
+ttk::style configure TProgressbar -background cyan -thickness 5
+button .ts.lv.tbar.cool -text "\u2744" -fg black -bg grey -command { toggleCoolerOn }
+
+spinbox .ts.lv.tbar.eunit -values {\u03BCs ms s} -width 3 -textvariable eunit -state readonly -command { updateExpTime }
+set eunit ms
+entry .ts.lv.tbar.etime -textvariable expTime -width 5 -validate focus -vcmd  {string is int %P}
+bind .ts.lv.tbar.etime <Return> updateExpTime
+#bind .ts.lv.tbar.etime <Leave> updateExpTime
+
+spinbox .ts.lv.tbar.zoom -values $zoomFactors -width 2 -state readonly -command { displayImg }
+.ts.lv.tbar.zoom  configure -textvariable imgZoom
+label .ts.lv.tbar.lz -text " zoom=1:"
+button .ts.lv.tbar.snap -text "\u25C9" -fg grey -command { getSnapshot; while {$repeatSnapshot} {getSnapshot} }
+checkbutton .ts.lv.tbar.loop -text "\u21BB" -variable repeatSnapshot
+#button .ts.lv.tbar.exit -text "\u2716" -fg red -command { after 0 { powerOff } }
+
+frame .ts.lv.main -relief raised -borderwidth 1
+canvas .ts.lv.main.c -bg white -yscrollcommand {.ts.lv.main.vs set} -xscrollcommand {.ts.lv.main.hs set}
+scrollbar .ts.lv.main.vs -orient vertical   -command {.ts.lv.main.c yview}
+scrollbar .ts.lv.main.hs -orient horizontal -command {.ts.lv.main.c xview}
+grid .ts.lv.main.c .ts.lv.main.vs -sticky nsew
+grid               .ts.lv.main.hs -sticky nsew
+grid columnconfigure .ts.lv.main .ts.lv.main.c -weight 1 ; #-minsize $MIN_W
+grid rowconfigure    .ts.lv.main .ts.lv.main.c -weight 1 ; #-minsize $MIN_H
+.ts.lv.main.c create image 0 0 -tags mainImg
+bind .ts.lv.main <Configure> { displayImg }
+
+pack .ts.lv.tbar.file .ts.lv.tbar.lvdev .ts.lv.tbar.vdev .ts.lv.tbar.reset .ts.lv.tbar.temp .ts.lv.tbar.ltemp \
+     .ts.lv.tbar.target .ts.lv.tbar.ltarget .ts.lv.tbar.coolbar .ts.lv.tbar.cool \
+     .ts.lv.tbar.etime .ts.lv.tbar.eunit .ts.lv.tbar.snap .ts.lv.tbar.loop .ts.lv.tbar.lz .ts.lv.tbar.zoom -side left
+#pack .ts.lv.tbar.exit -side right
+pack .ts.lv.tbar -side top -fill x
+#pack .ts.lv.main.c -side top
+pack .ts.lv.main -side top -expand 1 -fill both
+
+.ts tab configure LiveView -window .ts.lv -expand 1 -fill both
+.ts tab select LiveView
+
+# the third tab is for extracting a spectrum from ROI
+
+proc adjustROI {} {
+  global currentROI imgImg h_shift v_shift
+  set x1 [expr max([lindex $currentROI 0],0)] 
+  set y1 [expr max([lindex $currentROI 1],0)] 
+  set x2 [expr min([lindex $currentROI 2],[image width $imgImg])] 
+  set y2 [expr min([lindex $currentROI 3],[image height $imgImg])] 
+  setStatus "ok" "Set ROI  to \{ $x1 $y1 $x2 $y2 \}"
+  displaySpectrum $x1 $y1 $x2 $y2
+  set h_shift $x1
+  set v_shift $y1
+  }
 
 frame .ts.sp
-graph .ts.sp.g -width 900 -height 600 -bd 2 -relief groove
-.ts.sp.g axis configure x -title "pixel #" -min $h_shift -max [expr $h_shift + $h_size]
+frame .ts.sp.tbar
+label .ts.sp.tbar.lroi -text "ROI"
+entry .ts.sp.tbar.roi -textvariable currentROI -width 20
+bind .ts.sp.tbar.roi <Return> { adjustROI }
+button .ts.sp.tbar.reset -text "\u27F3" -command { adjustROI }
+#entry .ts.sp.tbar.y1 -textvariable v_shift -width 5 -validate focus -vcmd  {string is int %P}
+label .ts.sp.tbar.ldy -text "band of "
+entry .ts.sp.tbar.dy -textvariable v_size -width 5 -validate focus -vcmd  {string is int %P}
+#bind .ts.sp.tbar.y1 <Return> { lset currentROI 1 $v_shift; lset currentROI 3 [expr $v_shift + $v_size]}
+bind .ts.sp.tbar.dy <Return> { lset currentROI 3 [expr $v_shift + $v_size] }
+pack .ts.sp.tbar.lroi .ts.sp.tbar.roi .ts.sp.tbar.reset -side left -fill x
+pack .ts.sp.tbar.dy .ts.sp.tbar.ldy -side right
+pack .ts.sp.tbar -side top -fill x
+
+graph .ts.sp.g -width $imgW -height $imgH -bd 2 -relief groove
+.ts.sp.g axis configure x -title "pixel #" -min $h_shift -max [expr $h_shift + $imgW]
 .ts.sp.g element create spectrum -xdata ::x -ydata ::y -symbol "" -linewidth 1 -color magenta
 .ts.sp.g marker create image -image $imgImg -under yes -name bg
 .ts.sp.g marker configure bg -coords "$::x(min) $::y(min) $::x(max) $::y(max)"
 .ts.sp.g marker create line -outline cyan -linewidth 1 -name _top
 .ts.sp.g marker create line -outline cyan -linewidth 1 -name _bot
+.ts.sp.g legend configure -position plotarea -anchor ne -raised true -background white
 
 frame .ts.sp.rbar
-scale .ts.sp.rbar.vs -variable v_shift -from 0 -to [expr [image height $imgImg] - $v_size -1] -command { } -showvalue true -orient vertical
-label .ts.sp.rbar.ly0 -text "ROI"
-entry .ts.sp.rbar.y0 -textvariable v_shift -width 5 -validate focus -vcmd  {string is int %P}
-bind .ts.sp.rbar.y0 <Return> { }
-label .ts.sp.rbar.ldy -text " x "
-entry .ts.sp.rbar.dy -textvariable v_size -width 5 -validate focus -vcmd  {string is int %P}
-bind .ts.sp.rbar.dy <Return> { }
-label .ts.sp.rbar.fill -text " "
+scale .ts.sp.rbar.vs -variable v_shift -from 0 -to [expr [image height $imgImg] - $v_size -1] -showvalue true -orient vertical\
+  -command { lset currentROI 3 [expr $v_shift + $v_size]; lset currentROI 1 }
+label .ts.sp.rbar.x -text "----"
+label .ts.sp.rbar.y -text "----"
 pack .ts.sp.rbar -side right -fill y
-pack .ts.sp.rbar.ly0 .ts.sp.rbar.y0 -side top
-pack .ts.sp.rbar.fill .ts.sp.rbar.dy .ts.sp.rbar.ldy -side bottom
+pack .ts.sp.rbar.y .ts.sp.rbar.x -side bottom
 pack .ts.sp.rbar.vs -expand 1 -fill both
-
+bind .ts.sp.rbar.vs <ButtonRelease> { adjustROI }
 pack .ts.sp.g  -expand 1  -fill both
+InitCrosshairs .ts.sp.g
+bind .ts.sp.g <Motion> {atXhairs .ts.sp.g}
 
 .ts tab configure Spectrum -window .ts.sp -anchor nw
 
 ### tcl main code ----------------------------------------------------------------------------
 
+update
 
+if {$DEBUG} { puts "DEBUG: first call to C library. If segfault now, reset camera hardware" }
+
+# do these initializations after the widgets are in place
+
+findAllCameras
+set nCameras [llength $listOfCameras]
+if {$DEBUG} { puts "DEBUG: found $nCameras" }
+if { $nCameras > 1 } {
+  setStatus "warning" "Found $nCameras cameras, select one"
+  set cameraId -1
+  set cameraNow ""
+  } \
+elseif { $nCameras == 1 } { 
+  set cameraId 0
+  set cameraNow [lindex $listOfCameras $cameraId]
+  setStatus "ok" "Auto-selected $cameraId: $cameraNow"
+  } \
+else {
+  setStatus "error" "No compatible cameras available"
+  }
+
+if {$DEBUG} { puts "DEBUG: cameraId = $cameraId now" }
+
+if {$cameraId >= 0} {
+  connectCamera; resetCamera
+  if {$DEBUG} { puts "DEBUG: cameraMode = $ASI_CAMERA_MODE([ASIGetCameraMode $cameraId])"}
+  set targetMin [dict get $cameraControls(TargetTemp) min]000
+  set targetMax [dict get $cameraControls(TargetTemp) max]
+  .ts.lv.tbar.target configure -from $targetMin -to $targetMax -increment 1 
+  .ts.lv.tbar.snap configure -fg red
+  .ts.lv.tbar.reset configure -fg black
+  }
+
+set run true
+
+if {$DEBUG} { puts "DEBUG: starting main loop" }
+while {$run == true} {
+  update
+  after 500
+  if {$cameraId >= 0} {
+    set currentTemp [getValue $cameraId [getControlIndex Temperature]]
+    set currentTempC [format "  T=%+.1f\u00B0C" [expr $currentTemp/10.0]]
+    set coolPowerPerc [getValue $cameraId [getControlIndex CoolPowerPerc]]
+    .ts.lv.tbar.ltarget configure -text "\u00B0C  pwr=$coolPowerPerc%"
+    } \
+  else {
+    set currentTempC "T=----"
+    .ts.lv.tbar.ltarget configure -text "\u00B0C  pwr=---%"
+    }
+  }

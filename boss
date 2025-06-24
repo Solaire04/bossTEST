@@ -27,14 +27,13 @@ set zoomFactors { 16 8 4 2 1 }
 set imgZoomDefault 4
 
 set DEFAULTS    {
-#  File          {v {test.dat}   h "extensions .raw/.dat/.cfg vary as needed"}
   targetTemp    {v 5		h "sensor cooling target, down to 35\u00B0C below ambient" }
   expTime	{v 100 		h "exposure time" }
-  eunit		{v "ms"		h "time units" }
+  expUnit		{v "ms"		h "time units" }
   imgZoom	{v 4		h "camera image zoom factor" }
-  currentROI	{v "0 1200 2821 1250" h "Region Of Interest, in pixels"}
+  currentROI	{v "0 1200 2821 1250" h "Region Of Interest, in pixels" }
+  macroScript   {v "\# macro commands" h "tcl commands to be executed" }
   }
-
 
 ### at runtime, can set the DEBUG flag, if passed as the first parameter
 switch -- $argc {
@@ -299,7 +298,7 @@ proc SaveSettings { interactive fname } {
   }
 
 proc LoadSettings { interactive fname } {
-  global DEBUG settings WorkDir imgZoom targetTemp expTime eunit
+  global DEBUG settings WorkDir imgZoom targetTemp expTime expUnit
   if ($interactive) {
     set filename [tk_getOpenFile -filetypes { {{Config files} {.cfg .CFG}} {{All Files} *} } -initialfile $fname -initialdir $WorkDir]
     if { $filename == "" } { setStatus "warning" "Load operation cancelled by user"; return }
@@ -330,7 +329,86 @@ proc UpdateSettings {} {
     }
   }
 
+proc SaveFile {x1 y1 x2 y2} {
+  global DEBUG imgImg imgType RAW_IMG_TYPE WorkDir
+  set filename [tk_getSaveFile -filetypes { {{raw} {.raw .RAW}} {{png} {.png .PNG}} {{All Files} *} } \
+      -initialdir $WorkDir -initialfile img-[clock format [clock seconds] -format %Y%m%d%H%M%S]]
+  if { $filename == "" } { setStatus "warning" "Save operation cancelled by user"; return }
+  set ftype [string trimleft [string tolower [file extension $filename]] "."]
 
+  set imgH [image height $imgImg]
+  set imgW [image width $imgImg]
+  if {[expr $imgW*$imgH] == 0} { setStatus "error" "there is no image to save"; return } 
+  set h_size [expr $x2 - $x1]
+  set v_size [expr $y2 - $y1]
+  if {[expr $h_size*$v_size] == 0} { setStatus "error" "there is no ROI to save"; return } 
+  if {$DEBUG} { puts "DEBUG: saving $h_size x $v_size ROI from $imgH x $imgW $RAW_IMG_TYPE($imgType) image" }
+  
+  switch $ftype {
+    raw {
+      if { [catch {set fp [open $filename "w"]}] } {
+        setStatus "error" "Error opening file \"$filename\", check write permissions"; return }
+      image create photo imgRegion
+      imgRegion copy $imgImg -from $x1 $y1 $x2 $y2 -to 0 0
+      set AOI [base64::decode [imgRegion data -format raw -grayscale]]
+      #set AOI [$imgImg data -format raw -grayscale] 
+      if {$DEBUG} { puts "DEBUG: AOI is $h_size x $v_size, [string length $AOI] bytes" }
+      fconfigure $fp -translation binary -encoding binary
+      #puts $fp "Magic=RAW\nWidth=$imgWidth\nHeight=$imgHeight\nNumChan=1\nByteOrder=Intel\nScanOrder=TopDown\nPixelType=$RAW_IMG_TYPE($imgType)"
+      puts -nonewline $fp $AOI
+      close $fp
+      }
+    png {
+      if { [catch {$imgRegion write $filename -format png -grayscale -from $x1 $y1 $x2 $y2}] } {
+         setStatus "error" "Error writing to \"$filename\", check write permissions"; return }
+      }
+    default {
+      if {$DEBUG} { puts "DEBUG: saving file type \"$ftype\" is not (yet) implemented"; return }
+      }
+    }
+  setStatus "ok" "Saved as $filename"
+  }
+    
+proc LoadFile { type } {
+  global DEBUG imgImg imgData FILE_TYPE RAW_IMG_TYPE WorkDir
+  set filename [tk_getOpenFile -filetypes [list $FILE_TYPE($type) {{All Files} *}] -initialdir $WorkDir ]
+  if { $filename == "" } { setStatus "warning" "Load operation cancelled by user"; return }
+  set ftype [string trimleft [string tolower [file extension $filename]] "."]
+  switch $ftype {
+    raw -
+    png {
+      image delete $imgImg
+      set imgImg [image create photo -palette 65536]
+      if { [catch [$imgImg read $filename -format $ftype]] } {
+        setStatus "error" "Error opening $ftype image file \"$filename\", check permissions & format"; return }
+      adjustROI
+      }
+    default {
+      setStatus "warning" "File type \"$ftype\" is not yet supported"
+      return
+      }
+    }
+  if {$DEBUG} { puts "DEBUG: loaded [image width $imgImg]x[image height $imgImg] $ftype image" }
+  displayImg
+  }
+
+proc SaveSpectrum { fname } {
+  global DEBUG ::x ::y WorkDir cameraInfo expTime expUnit imgImg currentROI
+  if { $fname == "" } { 
+    set fname [tk_getSaveFile -filetypes { {{dat} {.dat .DAT}} {{txt} {.txt .TXT}} {{All Files} *} } \
+      -initialdir $WorkDir -initialfile img-[clock format [clock seconds] -format %Y%m%d%H%M%S]]
+    if { $fname == "" } { setStatus "warning" "Save operation cancelled by user"; return }
+    }
+  if { [catch {set fp [open $fname "w"]}] } {
+    setStatus "error" "Error opening file \"$fname\", check write permissions"
+    }\
+  else {
+    puts $fp "# camera: $cameraInfo(name) exposure: ${expTime}${expUnit}, image: [image width $imgImg]x[image height $imgImg], ROI: $currentROI"
+    for {set j 0} {$j < [::x length]} {incr j} { puts $fp "$::x($j)\t$::y($j)" }
+    close $fp
+    setStatus "ok" "Saved current spectrum to $fname"
+    }
+  }
 
 ### tcl wrappers for the ASI C library
 
@@ -571,19 +649,19 @@ proc toggleCoolerOn {} {
   }
 
 proc updateExpTime {} {
-  global cameraControls expTime eunits eunit
-  set t [expr $expTime * [dict get $eunits $eunit]]
+  global cameraControls expTime expUnits expUnit
+  set t [expr $expTime * [dict get $expUnits $expUnit]]
   set t_min [dict get $cameraControls(Exposure) min]
   set t_max [dict get $cameraControls(Exposure) max]
   if {$t<$t_min} { set t $t_min }
   if {$t>$t_max} { set t $t_max }
-  set expTime [expr $t / [dict get $eunits $eunit]]
-  setStatus "ok" "Exposure time set to $expTime$eunit = $t \u03BCs" 
+  set expTime [expr $t / [dict get $expUnits $expUnit]]
+  setStatus "ok" "Exposure time set to $expTime$expUnit = $t \u03BCs" 
   }
 
 
 proc getSnapshot {} {
-  global DEBUG run cameraId cameraInfo cameraControls expTime eunits eunit \
+  global DEBUG run cameraId cameraInfo cameraControls expTime expUnits expUnit \
          ASI_IMG_TYPE RAW_IMG_TYPE ASI_ERROR_CODE ASI_EXPOSURE_STATUS ASI_CAMERA_MODE \
          imgData imgType imgImg imgWidth imgHeight
   #set imgType 2
@@ -597,7 +675,7 @@ proc getSnapshot {} {
   ASISetROIFormat $cameraId $imgWidth $imgHeight $binType $imgType
   after 10
   setValue $cameraId [dict get $cameraControls(Gain) index] 0
-  set t [expr $expTime * [dict get $eunits $eunit]]
+  set t [expr $expTime * [dict get $expUnits $expUnit]]
   setValue $cameraId [dict get $cameraControls(Exposure) index] $t
   set status [ASIStartExposure $cameraId]
   if {"$ASI_ERROR_CODE($status)" != "ASI_SUCCESS"} { 
@@ -689,7 +767,7 @@ proc displaySpectrum {x1 y1 x2 y2} {
   set headerLength [expr [string length $AOI] - $h_size*$v_size - 1 ]
   if {$DEBUG} {puts "DEBUG: header of $headerLength bytes is:\n[string range $AOI 0 $headerLength]" }
   set AOI [string range $AOI $headerLength end-1]
-  if {$DEBUG} { puts "DEBUG: AOI is $imgH x $imgW, [string length $AOI] bytes" }
+  if {$DEBUG} { puts "DEBUG: AOI is $imgW x $imgH, [string length $AOI] bytes" }
   set cp [::tcl::chan::string $AOI]
   vector create ::z ::col
   ::z binread $cp -format "u2"; ::z matrix numcols $h_size
@@ -703,10 +781,10 @@ proc displaySpectrum {x1 y1 x2 y2} {
   #the raw format is interlaced, it assumes PixelType=byte, and we use two-byte "short"
   for {set j 0} {$j < $j_max} {incr j} {
     ::col set [::z matrix get $j]
-    set ::y(2*$j) $::col(sum)
+    set ::y([expr 2*$j]) $::col(sum)
     set j2 [expr $j_max+$j]
     ::col set [::z matrix get $j2]
-    set ::y(2*$j+1) $::col(sum)
+    set ::y([expr 2*$j+1]) $::col(sum)
     }
   ###}]
   ###puts "Summing up $h_size columns of length $v_size took [format %.3f [expr [lindex $tt 0] / 1000]] ms"; unset tt
@@ -786,8 +864,9 @@ set targetTemp 15
 set coolerOn 0
 set coolPowerPerc 0
 set expTime 10
-set eunit ms
-set eunits { \u03BCs 1 ms 1000 s 1000000 }
+set expUnit ms
+set expUnits { \u03BCs 1 ms 1000 s 1000000 }
+set macroScript ""
 set imgData ""
 set imgImg [image create photo -palette 65535]
 set imgZoom $imgZoomDefault
@@ -877,15 +956,36 @@ foreach paramName [dict keys $settings] {
 frame .ts.settings.actions
 button .ts.settings.actions.saveConfig -text "Save .cfg" -bg LightGreen -command {SaveSettings 1 $File}
 button .ts.settings.actions.loadConfig -text "Load .cfg" -bg LightGreen -command {LoadSettings 1 $File}
-button .ts.settings.dePake -text "Go" -bg LightGreen -command { dePake go }
+button .ts.settings.executeMacro -text "Go" -bg LightGreen -command { executeMacro }
+
+proc executeMacro {} {
+  set script [split [.ts.settings.macro.script get 1.0 end] \n]
+  for {set i 0} {$i<[llength $script]} {incr i} {
+    set line [lindex $script $i]
+    if {"$line"!=""} {
+      setStatus "ok" "Executing \{ $line \} "
+      uplevel 1 $line
+      }
+    } 
+  }
+
+frame .ts.settings.macro -width 60 -height 10 
+#text .ts.settings.script -yscrollcommand ".ts.settings.scroll set" -setgrid true -width 40 -height 10 -background white -undo 1
+text .ts.settings.macro.script -background white -yscrollcommand ".ts.settings.macro.scroll set"
+.ts.settings.macro.script insert 0.0 $macroScript
+scrollbar .ts.settings.macro.scroll -command ".ts.settings.macro.script yview"
+pack .ts.settings.macro.script .ts.settings.macro.scroll -side left -fill y
 
 pack .ts.settings.actions.saveConfig .ts.settings.actions.loadConfig -side left
 table .ts.settings $i,0 .ts.settings.actions -cspan 2
-table .ts.settings $i,2 .ts.settings.dePake
+table .ts.settings $i,2 .ts.settings.executeMacro
+incr i
+table .ts.settings $i,0 .ts.settings.macro -cspan 3 
 table configure .ts.settings -propagate true
 
 .ts tab configure Settings -window .ts.settings -anchor n
 
+set fileName ""
 vector create ::x
 vector create ::y
 vector create ::z
@@ -897,11 +997,14 @@ frame .ts.lv
 frame .ts.lv.tbar -relief raised -borderwidth 1
 menubutton .ts.lv.tbar.file -text "File" -relief raised -menu .ts.lv.tbar.file.m 
 menu .ts.lv.tbar.file.m -tearoff 0
-  .ts.lv.tbar.file.m add command -label "Save img" -command { saveFile }
-  .ts.lv.tbar.file.m add command -label "Load img" -command { loadFile raw }
+  .ts.lv.tbar.file.m add command -label "Save img" -command { SaveFile 0 0 [image width $imgImg] [image height $imgImg]}
+  .ts.lv.tbar.file.m add command -label "Load img" -command { LoadFile raw }
   .ts.lv.tbar.file.m add separator
-  .ts.lv.tbar.file.m add command -label "Save ROI" -command { saveFile }
-  .ts.lv.tbar.file.m add command -label "Load ROI" -command { loadFile raw }
+  .ts.lv.tbar.file.m add command -label "Save ROI" -command { 
+    set x1 [lindex $currentROI 0]; set y1 [lindex $currentROI 1]
+    set x2 [lindex $currentROI 2]; set y2 [lindex $currentROI 3]
+    SaveFile $x1 $y1 $x2 $y2
+    }
 
 label .ts.lv.tbar.lvdev -text " camera=" 
 ComboBox .ts.lv.tbar.vdev -textvariable cameraNow -values $listOfCameras -modifycmd {
@@ -927,8 +1030,8 @@ ttk::progressbar .ts.lv.tbar.coolbar -orient vertical -length 33 -mode determina
 ttk::style configure TProgressbar -background cyan -thickness 5
 button .ts.lv.tbar.cool -text "\u2744" -fg black -bg grey -command { toggleCoolerOn }
 
-spinbox .ts.lv.tbar.eunit -values {\u03BCs ms s} -width 3 -textvariable eunit -state readonly -command { updateExpTime }
-set eunit ms
+spinbox .ts.lv.tbar.eunit -values {\u03BCs ms s} -width 3 -textvariable expUnit -state readonly -command { updateExpTime }
+set expUnit ms
 entry .ts.lv.tbar.etime -textvariable expTime -width 5 -validate focus -vcmd  {string is int %P}
 bind .ts.lv.tbar.etime <Return> updateExpTime
 #bind .ts.lv.tbar.etime <Leave> updateExpTime
@@ -967,10 +1070,11 @@ pack .ts.lv.main -side top -expand 1 -fill both
 proc adjustROI {} {
   global currentROI imgImg h_shift v_shift
   set x1 [expr max([lindex $currentROI 0],0)] 
-  set y1 [expr max([lindex $currentROI 1],0)] 
+  set y1 [expr min(max([lindex $currentROI 1],0),[image height $imgImg]-1)] 
   set x2 [expr min([lindex $currentROI 2],[image width $imgImg])] 
   set y2 [expr min([lindex $currentROI 3],[image height $imgImg])] 
   setStatus "ok" "Set ROI  to \{ $x1 $y1 $x2 $y2 \}"
+  set currentRoi "$x1 $y1 $x2 $y2"
   displaySpectrum $x1 $y1 $x2 $y2
   set h_shift $x1
   set v_shift $y1
@@ -978,16 +1082,20 @@ proc adjustROI {} {
 
 frame .ts.sp
 frame .ts.sp.tbar
-label .ts.sp.tbar.lroi -text "ROI"
+menubutton .ts.sp.tbar.file -text "File" -relief raised -menu .ts.sp.tbar.file.m 
+menu .ts.sp.tbar.file.m -tearoff 0
+  .ts.sp.tbar.file.m add command -label "Save spectrum" -command { SaveSpectrum $fileName }
+  .ts.sp.tbar.file.m add separator
+label .ts.sp.tbar.lroi -text "  ROI"
 entry .ts.sp.tbar.roi -textvariable currentROI -width 20
 bind .ts.sp.tbar.roi <Return> { adjustROI }
 button .ts.sp.tbar.reset -text "\u27F3" -command { adjustROI }
 #entry .ts.sp.tbar.y1 -textvariable v_shift -width 5 -validate focus -vcmd  {string is int %P}
 label .ts.sp.tbar.ldy -text "band of "
 entry .ts.sp.tbar.dy -textvariable v_size -width 5 -validate focus -vcmd  {string is int %P}
-#bind .ts.sp.tbar.y1 <Return> { lset currentROI 1 $v_shift; lset currentROI 3 [expr $v_shift + $v_size]}
-bind .ts.sp.tbar.dy <Return> { lset currentROI 3 [expr $v_shift + $v_size] }
-pack .ts.sp.tbar.lroi .ts.sp.tbar.roi .ts.sp.tbar.reset -side left -fill x
+#bind .ts.sp.tbar.y1 <Return> { lset currentROI 1 $v_shift; lset currentROI 3 [expr $v_shift + $v_size]; adjustROI}
+bind .ts.sp.tbar.dy <Return> { lset currentROI 3 [expr $v_shift + $v_size]; adjustROI }
+pack .ts.sp.tbar.file .ts.sp.tbar.lroi .ts.sp.tbar.roi .ts.sp.tbar.reset -side left -fill x
 pack .ts.sp.tbar.dy .ts.sp.tbar.ldy -side right
 pack .ts.sp.tbar -side top -fill x
 

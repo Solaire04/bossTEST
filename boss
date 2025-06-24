@@ -268,7 +268,7 @@ proc newVector { name len } {
   }
 
 proc SaveSettings { interactive fname } {
-  global DEBUG settings WorkDir
+  global DEBUG settings WorkDir 
   if ($interactive) {
     set filename [tk_getSaveFile -filetypes { {{Config files} {.cfg .CFG}} {{All Files} *} } \
       -initialfile [join "[file rootname [file tail $fname]] .cfg" ""] -initialdir $WorkDir]
@@ -330,12 +330,14 @@ proc UpdateSettings {} {
     }
   }
 
-proc SaveFile {x1 y1 x2 y2} {
+proc SaveRaw {x1 y1 x2 y2 fname} {
   global DEBUG imgImg imgType RAW_IMG_TYPE WorkDir
-  set filename [tk_getSaveFile -filetypes { {{raw} {.raw .RAW}} {{png} {.png .PNG}} {{All Files} *} } \
+  if { $fname == "" } { 
+    set filename [tk_getSaveFile -filetypes { {{raw} {.raw .RAW}} {{png} {.png .PNG}} {{All Files} *} } \
       -initialdir $WorkDir -initialfile img-[clock format [clock seconds] -format %Y%m%d%H%M%S]]
-  if { $filename == "" } { setStatus "warning" "Save operation cancelled by user"; return }
-  set ftype [string trimleft [string tolower [file extension $filename]] "."]
+    if { $fname == "" } { setStatus "warning" "Save operation cancelled by user"; return }
+    }
+  set ftype [string trimleft [string tolower [file extension $fname]] "."]
 
   set imgH [image height $imgImg]
   set imgW [image width $imgImg]
@@ -347,8 +349,8 @@ proc SaveFile {x1 y1 x2 y2} {
   
   switch $ftype {
     raw {
-      if { [catch {set fp [open $filename "w"]}] } {
-        setStatus "error" "Error opening file \"$filename\", check write permissions"; return }
+      if { [catch {set fp [open $fname "w"]}] } {
+        setStatus "error" "Error opening file \"$fname\", check write permissions"; return }
       image create photo imgRegion
       imgRegion copy $imgImg -from $x1 $y1 $x2 $y2 -to 0 0
       set AOI [base64::decode [imgRegion data -format raw -grayscale]]
@@ -360,16 +362,60 @@ proc SaveFile {x1 y1 x2 y2} {
       close $fp
       }
     png {
-      if { [catch {$imgRegion write $filename -format png -grayscale -from $x1 $y1 $x2 $y2}] } {
-         setStatus "error" "Error writing to \"$filename\", check write permissions"; return }
+      if { [catch {$imgRegion write $fname -format png -grayscale -from $x1 $y1 $x2 $y2}] } {
+         setStatus "error" "Error writing to \"$fname\", check write permissions"; return }
       }
     default {
       if {$DEBUG} { puts "DEBUG: saving file type \"$ftype\" is not (yet) implemented"; return }
       }
     }
-  setStatus "ok" "Saved as $filename"
+  setStatus "ok" "Saved as $fname"
   }
     
+proc saveFile { fname } {
+  global DEBUG ::x ::y WorkDir cameraInfo expTime expUnit imgImg ROI
+  if { $fname == "" } { 
+    set filename [tk_getSaveFile -filetypes { {{dat} {.dat .DAT}} {{txt} {.txt .TXT}} {{All Files} *} } \
+      -initialdir $WorkDir -initialfile img-[clock format [clock seconds] -format %Y%m%d%H%M%S]]
+    if { $filename == "" } { setStatus "warning" "Save operation cancelled by user"; return }
+    }\
+  else {
+    set filename ${fname}
+    }
+  # could check for existence and query to override here, but use in macros demand we plow ahead
+  if { [catch {set fp [open $filename "w"]}] } {
+    setStatus "error" "Error opening file \"$filename\", check write permissions"; return
+    }
+  set ftype [string trimleft [string tolower [file extension $filename]] "."]
+  switch $ftype {
+    raw {
+      set imgW [image width $imgImg]
+      set imgH [image height $imgImg]
+      set AOI [base64::decode [$imgImg data -format raw -grayscale]]
+      #set AOI [$imgImg data -format raw -grayscale] 
+      fconfigure $fp -translation binary -encoding binary
+      puts -nonewline $fp $AOI
+      close $fp
+      }
+    png {
+      close $fp
+      if { [catch {$imgImg write $filename -format png -grayscale -from $x1 $y1 $x2 $y2}] } {
+         setStatus "error" "Error writing to \"$filename\", check write permissions"; return }
+      }
+    dat -
+    txt {
+      puts $fp "# camera: $cameraInfo(name) exposure: ${expTime}${expUnit}, image: [image width $imgImg]x[image height $imgImg], ROI: $ROI"
+      for {set j 0} {$j < [::x length]} {incr j} { puts $fp "$::x($j)\t$::y($j)" }
+      close $fp
+      setStatus "ok" "Saved current spectrum to $filename"
+      }
+    default {
+      setStatus "warning" "File type \"$ftype\" is not yet supported"
+      return
+      }
+    }
+  }
+
 proc LoadFile { type } {
   global DEBUG imgImg imgData FILE_TYPE RAW_IMG_TYPE WorkDir ROI
   set filename [tk_getOpenFile -filetypes [list $FILE_TYPE($type) {{All Files} *}] -initialdir $WorkDir ]
@@ -392,24 +438,6 @@ proc LoadFile { type } {
   if {$DEBUG} { puts "DEBUG: loaded [image width $imgImg]x[image height $imgImg] $ftype image" }
   lset ROI 0 0;  lset ROI 2 [image width $imgImg]
   displayImg
-  }
-
-proc SaveSpectrum { fname } {
-  global DEBUG ::x ::y WorkDir cameraInfo expTime expUnit imgImg ROI
-  if { $fname == "" } { 
-    set fname [tk_getSaveFile -filetypes { {{dat} {.dat .DAT}} {{txt} {.txt .TXT}} {{All Files} *} } \
-      -initialdir $WorkDir -initialfile img-[clock format [clock seconds] -format %Y%m%d%H%M%S]]
-    if { $fname == "" } { setStatus "warning" "Save operation cancelled by user"; return }
-    }
-  if { [catch {set fp [open $fname "w"]}] } {
-    setStatus "error" "Error opening file \"$fname\", check write permissions"
-    }\
-  else {
-    puts $fp "# camera: $cameraInfo(name) exposure: ${expTime}${expUnit}, image: [image width $imgImg]x[image height $imgImg], ROI: $ROI"
-    for {set j 0} {$j < [::x length]} {incr j} { puts $fp "$::x($j)\t$::y($j)" }
-    close $fp
-    setStatus "ok" "Saved current spectrum to $fname"
-    }
   }
 
 ### tcl wrappers for the ASI C library
@@ -974,7 +1002,7 @@ proc executeMacro {} {
 frame .ts.settings.macro -width 60 -height 10 
 #text .ts.settings.script -yscrollcommand ".ts.settings.scroll set" -setgrid true -width 40 -height 10 -background white -undo 1
 text .ts.settings.macro.script -background white -yscrollcommand ".ts.settings.macro.scroll set"
-.ts.settings.macro.script insert 1.0 $macroScript
+#.ts.settings.macro.script insert 1.0 $macroScript
 scrollbar .ts.settings.macro.scroll -command ".ts.settings.macro.script yview"
 pack .ts.settings.macro.script .ts.settings.macro.scroll -side left -fill y
 
@@ -999,13 +1027,13 @@ frame .ts.lv
 frame .ts.lv.tbar -relief raised -borderwidth 1
 menubutton .ts.lv.tbar.file -text "File" -relief raised -menu .ts.lv.tbar.file.m 
 menu .ts.lv.tbar.file.m -tearoff 0
-  .ts.lv.tbar.file.m add command -label "Save img" -command { SaveFile 0 0 [image width $imgImg] [image height $imgImg]}
+  .ts.lv.tbar.file.m add command -label "Save img" -command { SaveRaw 0 0 [image width $imgImg] [image height $imgImg] ""}
   .ts.lv.tbar.file.m add command -label "Load img" -command { LoadFile raw }
   .ts.lv.tbar.file.m add separator
   .ts.lv.tbar.file.m add command -label "Save ROI" -command { 
     set x1 [lindex $ROI 0]; set y1 [lindex $ROI 1]
     set x2 [lindex $ROI 2]; set y2 [lindex $ROI 3]
-    SaveFile $x1 $y1 $x2 $y2
+    SaveRaw $x1 $y1 $x2 $y2 ""
     }
 
 label .ts.lv.tbar.lvdev -text " camera=" 
@@ -1086,8 +1114,8 @@ frame .ts.sp
 frame .ts.sp.tbar
 menubutton .ts.sp.tbar.file -text "File" -relief raised -menu .ts.sp.tbar.file.m 
 menu .ts.sp.tbar.file.m -tearoff 0
-  .ts.sp.tbar.file.m add command -label "Save spectrum" -command { SaveSpectrum $fileName }
-  .ts.sp.tbar.file.m add separator
+  .ts.sp.tbar.file.m add command -label "Save spectrum" -command { saveFile $fileName }
+  #.ts.sp.tbar.file.m add separator
 label .ts.sp.tbar.lroi -text "  ROI"
 entry .ts.sp.tbar.roi -textvariable ROI -width 20
 bind .ts.sp.tbar.roi <Return> { adjustROI }

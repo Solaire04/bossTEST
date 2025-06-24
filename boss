@@ -15,7 +15,7 @@ LD_LIBRARY_PATH="/opt/ASI_linux_mac_SDK_V1.37/lib/x64:$LD_LIBRARY_PATH" exec wis
 
 set APPNAME     [lindex [file split [info script]] end]
 set PLATFORM    [lindex [array get tcl_platform os] 1]
-set VERSION     2025.06.11
+set VERSION     2025.06.25
 set PWD         [pwd]
 set RCNAME      [file join [cd; pwd] .${APPNAME}rc]
 set MIN_W       1080
@@ -29,11 +29,12 @@ set imgZoomDefault 4
 set DEFAULTS    {
   targetTemp    {v 5		h "sensor cooling target, down to 35\u00B0C below ambient" }
   expTime	{v 100 		h "exposure time" }
-  expUnit		{v "ms"		h "time units" }
+  expUnit	{v "ms"		h "time units" }
   imgZoom	{v 4		h "camera image zoom factor" }
-  currentROI	{v "0 1200 2821 1250" h "Region Of Interest, in pixels" }
-  macroScript   {v "\# macro commands" h "tcl commands to be executed" }
+  ROI		{v "0 1200 2821 1250" h "Region Of Interest, in pixels" }
   }
+
+#macroScript   {v ""		 h "tcl commands to be executed" }
 
 ### at runtime, can set the DEBUG flag, if passed as the first parameter
 switch -- $argc {
@@ -370,7 +371,7 @@ proc SaveFile {x1 y1 x2 y2} {
   }
     
 proc LoadFile { type } {
-  global DEBUG imgImg imgData FILE_TYPE RAW_IMG_TYPE WorkDir
+  global DEBUG imgImg imgData FILE_TYPE RAW_IMG_TYPE WorkDir ROI
   set filename [tk_getOpenFile -filetypes [list $FILE_TYPE($type) {{All Files} *}] -initialdir $WorkDir ]
   if { $filename == "" } { setStatus "warning" "Load operation cancelled by user"; return }
   set ftype [string trimleft [string tolower [file extension $filename]] "."]
@@ -389,11 +390,12 @@ proc LoadFile { type } {
       }
     }
   if {$DEBUG} { puts "DEBUG: loaded [image width $imgImg]x[image height $imgImg] $ftype image" }
+  lset ROI 0 0;  lset ROI 2 [image width $imgImg]
   displayImg
   }
 
 proc SaveSpectrum { fname } {
-  global DEBUG ::x ::y WorkDir cameraInfo expTime expUnit imgImg currentROI
+  global DEBUG ::x ::y WorkDir cameraInfo expTime expUnit imgImg ROI
   if { $fname == "" } { 
     set fname [tk_getSaveFile -filetypes { {{dat} {.dat .DAT}} {{txt} {.txt .TXT}} {{All Files} *} } \
       -initialdir $WorkDir -initialfile img-[clock format [clock seconds] -format %Y%m%d%H%M%S]]
@@ -403,7 +405,7 @@ proc SaveSpectrum { fname } {
     setStatus "error" "Error opening file \"$fname\", check write permissions"
     }\
   else {
-    puts $fp "# camera: $cameraInfo(name) exposure: ${expTime}${expUnit}, image: [image width $imgImg]x[image height $imgImg], ROI: $currentROI"
+    puts $fp "# camera: $cameraInfo(name) exposure: ${expTime}${expUnit}, image: [image width $imgImg]x[image height $imgImg], ROI: $ROI"
     for {set j 0} {$j < [::x length]} {incr j} { puts $fp "$::x($j)\t$::y($j)" }
     close $fp
     setStatus "ok" "Saved current spectrum to $fname"
@@ -866,14 +868,14 @@ set coolPowerPerc 0
 set expTime 10
 set expUnit ms
 set expUnits { \u03BCs 1 ms 1000 s 1000000 }
-set macroScript ""
+#list macroScript {}
 set imgData ""
 set imgImg [image create photo -palette 65535]
 set imgZoom $imgZoomDefault
 set imgType 2
 set imgH $MIN_H
 set imgW $MIN_W
-set currentROI "0 [expr $imgH/2] $imgW [expr $imgH/2+50]"
+set ROI "0 [expr $imgH/2] $imgW [expr $imgH/2+50]"
 
 set basefontsize 11
 set fontDefault Arial
@@ -900,10 +902,10 @@ else {
   LoadSettings 0 $RCNAME
   }
 UpdateSettings
-set v_shift [expr [lindex $currentROI 1]]
-set v_size [expr [lindex $currentROI 3] - [lindex $currentROI 1]]
-set h_shift [expr [lindex $currentROI 0]]
-set h_size [expr [lindex $currentROI 2] - [lindex $currentROI 0]]
+set v_shift [expr [lindex $ROI 1]]
+set v_size [expr [lindex $ROI 3] - [lindex $ROI 1]]
+set h_shift [expr [lindex $ROI 0]]
+set h_size [expr [lindex $ROI 2] - [lindex $ROI 0]]
 
 cd "$WorkDir" 
 if {$DEBUG} { puts "DEBUG: in $WorkDir" }
@@ -972,7 +974,7 @@ proc executeMacro {} {
 frame .ts.settings.macro -width 60 -height 10 
 #text .ts.settings.script -yscrollcommand ".ts.settings.scroll set" -setgrid true -width 40 -height 10 -background white -undo 1
 text .ts.settings.macro.script -background white -yscrollcommand ".ts.settings.macro.scroll set"
-.ts.settings.macro.script insert 0.0 $macroScript
+.ts.settings.macro.script insert 1.0 $macroScript
 scrollbar .ts.settings.macro.scroll -command ".ts.settings.macro.script yview"
 pack .ts.settings.macro.script .ts.settings.macro.scroll -side left -fill y
 
@@ -1001,8 +1003,8 @@ menu .ts.lv.tbar.file.m -tearoff 0
   .ts.lv.tbar.file.m add command -label "Load img" -command { LoadFile raw }
   .ts.lv.tbar.file.m add separator
   .ts.lv.tbar.file.m add command -label "Save ROI" -command { 
-    set x1 [lindex $currentROI 0]; set y1 [lindex $currentROI 1]
-    set x2 [lindex $currentROI 2]; set y2 [lindex $currentROI 3]
+    set x1 [lindex $ROI 0]; set y1 [lindex $ROI 1]
+    set x2 [lindex $ROI 2]; set y2 [lindex $ROI 3]
     SaveFile $x1 $y1 $x2 $y2
     }
 
@@ -1068,11 +1070,11 @@ pack .ts.lv.main -side top -expand 1 -fill both
 # the third tab is for extracting a spectrum from ROI
 
 proc adjustROI {} {
-  global currentROI imgImg h_shift v_shift
-  set x1 [expr max([lindex $currentROI 0],0)] 
-  set y1 [expr min(max([lindex $currentROI 1],0),[image height $imgImg]-1)] 
-  set x2 [expr min([lindex $currentROI 2],[image width $imgImg])] 
-  set y2 [expr min([lindex $currentROI 3],[image height $imgImg])] 
+  global ROI imgImg h_shift v_shift
+  set x1 [expr max([lindex $ROI 0],0)] 
+  set y1 [expr min(max([lindex $ROI 1],0),[image height $imgImg]-1)] 
+  set x2 [expr min([lindex $ROI 2],[image width $imgImg])] 
+  set y2 [expr min([lindex $ROI 3],[image height $imgImg])] 
   setStatus "ok" "Set ROI  to \{ $x1 $y1 $x2 $y2 \}"
   set currentRoi "$x1 $y1 $x2 $y2"
   displaySpectrum $x1 $y1 $x2 $y2
@@ -1087,14 +1089,14 @@ menu .ts.sp.tbar.file.m -tearoff 0
   .ts.sp.tbar.file.m add command -label "Save spectrum" -command { SaveSpectrum $fileName }
   .ts.sp.tbar.file.m add separator
 label .ts.sp.tbar.lroi -text "  ROI"
-entry .ts.sp.tbar.roi -textvariable currentROI -width 20
+entry .ts.sp.tbar.roi -textvariable ROI -width 20
 bind .ts.sp.tbar.roi <Return> { adjustROI }
 button .ts.sp.tbar.reset -text "\u27F3" -command { adjustROI }
 #entry .ts.sp.tbar.y1 -textvariable v_shift -width 5 -validate focus -vcmd  {string is int %P}
 label .ts.sp.tbar.ldy -text "band of "
 entry .ts.sp.tbar.dy -textvariable v_size -width 5 -validate focus -vcmd  {string is int %P}
-#bind .ts.sp.tbar.y1 <Return> { lset currentROI 1 $v_shift; lset currentROI 3 [expr $v_shift + $v_size]; adjustROI}
-bind .ts.sp.tbar.dy <Return> { lset currentROI 3 [expr $v_shift + $v_size]; adjustROI }
+#bind .ts.sp.tbar.y1 <Return> { lset ROI 1 $v_shift; lset ROI 3 [expr $v_shift + $v_size]; adjustROI}
+bind .ts.sp.tbar.dy <Return> { lset ROI 3 [expr $v_shift + $v_size]; adjustROI }
 pack .ts.sp.tbar.file .ts.sp.tbar.lroi .ts.sp.tbar.roi .ts.sp.tbar.reset -side left -fill x
 pack .ts.sp.tbar.dy .ts.sp.tbar.ldy -side right
 pack .ts.sp.tbar -side top -fill x
@@ -1110,7 +1112,7 @@ graph .ts.sp.g -width $imgW -height $imgH -bd 2 -relief groove
 
 frame .ts.sp.rbar
 scale .ts.sp.rbar.vs -variable v_shift -from 0 -to [expr [image height $imgImg] - $v_size -1] -showvalue true -orient vertical\
-  -command { lset currentROI 3 [expr $v_shift + $v_size]; lset currentROI 1 }
+  -command { lset ROI 3 [expr $v_shift + $v_size]; lset ROI 1 }
 label .ts.sp.rbar.x -text "----"
 label .ts.sp.rbar.y -text "----"
 pack .ts.sp.rbar -side right -fill y

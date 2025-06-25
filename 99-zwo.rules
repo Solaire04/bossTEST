@@ -1,0 +1,5 @@
+# Set a larger minimum value for usbfs memory, needed by USB3 high-res cameras
+SUBSYSTEM=="usb", ACTION=="add", ATTR{idVendor}=="03c3", RUN+="/bin/sh -c 'test -f /sys/module/usbcore/parameters/usbfs_memory_mb && test `cat /sys/module/usbcore/parameters/usbfs_memory_mb` -lt 256 && echo 256 >/sys/module/usbcore/parameters/usbfs_memory_mb'"
+#   # All ASI Cameras and filter wheels
+SUBSYSTEMS=="usb", ATTR{idVendor}=="03c3", MODE="0666"
+

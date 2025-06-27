@@ -10,13 +10,25 @@ This software is being tested on two such cameras from ZWO (https://zwoastro.com
 
 The Pro designation indicates built-in active cooling, and MM type employs monochrome sensors of the highest sensitivity and dynamic range (the corresponding type MC cameras are the colour versions of the same, and typically have lower dynamic range but three colour channels).
 
-**boss** software is written in tcl/tk which makes it completely platform independent, but it only gets tested under Linux (xubuntu/Debian are the primary distributions in use). For fast i/o and large image processing, critical parts are written in C using **critcl** (https://andreas-kupries.github.io/critcl/), and a pre-compiled low-level C library provided by the manufacturer ZWO (https://www.zwoastro.com/software/).
+**boss** software is written in tcl/tk which makes it platform independent, but it only gets tested under Linux (xubuntu/Debian are the primary distributions in use in the <a href="https://brocku.ca/physics" target="_blank">Department of Physics at Brock University</a>. For fast i/o and large image processing, critical parts are written in C using **critcl** (https://andreas-kupries.github.io/critcl/), and a pre-compiled low-level C library provided by the manufacturer ZWO (https://www.zwoastro.com/software/).
 
 In simple spectrometers the slit sizes and grating angles are controlled by hand. More sophisticated devices may have GPIB or serial-line controls. Since the protocols vary, each spectrometer may need to be treated differently.  For GPIB-controlled devices, **linux-gpib** (https://github.com/coolshou/linux-gpib or https://gpib-tcl.sourceforge.net/GPIB-Tcl.html) is used to provide the kernel modules (it is rumoured to be included in the mainline Linux kernel soon) and **tcl-gpib** (https://github.com/slazav/tcl-gpib) which provides a tcl/tk interface to that library.
 
 To install all prerequisite pieces on a typical (x)ubuntu/debian installation, try:
 ```
-  sudo apt-get build-essential tcl-dev tk-dev blt-dev critcl bwidget tklib libtk-img
-  sudo install -m 644 99-zwo.rules /etc/udev/rules
+sudo apt-get build-essential tcl-dev tk-dev blt-dev critcl bwidget tklib libtk-img
+sudo install -m 644 99-zwo.rules /etc/udev/rules
+sudo install -m 644 logo.png /usr/local/share/icons/hicolor/512x512/apps/boss.png
+sudo install -m 644 boss.desktop /usr/local/share/applications
+sudo install -m 755 boss /usr/local/bin
 ```
 and be sure to download and untar into `/opt/ASI_linux_mac_SDK_V1.37` (or similar, but then adjust the pointers in the main file) the libraries provided by ZWO.
+
+Running from a terminal, you may simply type `boss` (or `/usr/local/bin/boss`). If things do not work, try 
+```
+boss DEBUG
+```
+
+A note of caution: use high-quality USB3 cables and adequate power supplies. A poor cable may work for a camera, and fail in unexpected ways for a more demanding one. If you are experiencing failed exposures, the first thing to do is to try a better USB cable.
+
+

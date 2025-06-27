@@ -1,4 +1,4 @@
-# boss - Brock Optical Spectroscopy Software
+# <img src="https://github.com/esternin/boss/blob/main/logo.png" alt="[boss logo]" width="64" height="64"> Brock Optical Spectroscopy Software 
 
 A typical optical spectrometer consists of both mechanical and optical parts that are quite robust.  It is not unusual to find multi-decade-old spectrometers still in daily use. The one component that ages and usually causes the spectrometer to be replaced is the detector, as the light sensor technology has been developing at great speed ever since the high-resolution digital cameras came into being in the 1990s, and it shows no sign of slowing down.
 

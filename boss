@@ -454,6 +454,11 @@ proc LoadFile { type } {
     }
   if {$DEBUG} { puts "DEBUG: loaded [image width $imgImg]x[image height $imgImg] $ftype image" }
   lset ROI 0 0;  lset ROI 2 [image width $imgImg]
+  set v_shift [lindex $ROI 1]
+  set v_size [expr [lindex $ROI 3] - $v_shift]
+  lset ROI 3 [expr min([image height $imgImg],$v_shift + $v_size)]
+  lset ROI 1 [expr [lindex $ROI 3] - $v_size]
+  adjustROI
   displayImg
   }
 
@@ -684,8 +689,8 @@ proc toggleCoolerOn {} {
     setStatus "error" "Need to connect to a camera first"
     return TCL_ERROR
     }
-  set backgrounds {grey white}
-  set foregrounds {black cyan}
+  set backgrounds {white cyan}
+  set foregrounds {cyan white}
   set labels {OFF ON}
   set coolerOn [expr {$coolerOn ? 0 : 1}]
   if {$coolerOn} { setValue $cameraId [getControlIndex TargetTemp] $targetTemp }
@@ -1090,7 +1095,7 @@ label .ts.lv.tbar.temp  -textvariable currentTempC
 label .ts.lv.tbar.ltarget -text "\u00B0C  pwr=---%"
 ttk::progressbar .ts.lv.tbar.coolbar -orient vertical -length 33 -mode determinate -variable coolPowerPerc
 ttk::style configure TProgressbar -background cyan -thickness 5
-button .ts.lv.tbar.cool -text "\u2744" -fg black -bg grey -command { toggleCoolerOn }
+button .ts.lv.tbar.cool -text "\u2744" -fg grey -command { toggleCoolerOn }
 
 spinbox .ts.lv.tbar.eunit -values {\u03BCs ms s} -width 3 -textvariable expUnit -state readonly -command { updateExpTime }
 set expUnit ms
@@ -1133,8 +1138,9 @@ proc adjustROI {} {
   global ROI imgImg h_shift v_shift
   set x1 [expr max([lindex $ROI 0],0)] 
   set y1 [expr min(max([lindex $ROI 1],0),[image height $imgImg]-1)] 
+  set v_size [expr max(1,[lindex $ROI 3]-$y1)]
   set x2 [expr min([lindex $ROI 2],[image width $imgImg])] 
-  set y2 [expr min([lindex $ROI 3],[image height $imgImg])] 
+  set y2 [expr min($y1+$v_size,[image height $imgImg])] 
   setStatus "ok" "Set ROI  to \{ $x1 $y1 $x2 $y2 \}"
   set currentRoi "$x1 $y1 $x2 $y2"
   displaySpectrum $x1 $y1 $x2 $y2
@@ -1240,6 +1246,7 @@ if {$cameraId >= 0} {
   set targetMax [dict get $cameraControls(TargetTemp) max]
   .ts.lv.tbar.target configure -from $targetMin -to $targetMax -increment 1 
   .ts.lv.tbar.snap configure -fg red -bg white
+  .ts.lv.tbar.cool configure -fg cyan -bg white 
   .ts.lv.tbar.reset configure -fg black
   }
 

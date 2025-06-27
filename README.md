@@ -16,7 +16,7 @@ In simple spectrometers the slit sizes and grating angles are controlled by hand
 
 To install all prerequisite pieces on a typical (x)ubuntu/debian installation, try:
 ```
-sudo apt-get build-essential tcl-dev tk-dev blt-dev critcl bwidget tklib libtk-img
+sudo apt-get install build-essential tcl-dev tk-dev blt-dev critcl bwidget tklib libtk-img
 sudo install -m 644 99-zwo.rules /etc/udev/rules
 sudo install -m 644 logo.png /usr/local/share/icons/hicolor/512x512/apps/boss.png
 sudo install -m 644 boss.desktop /usr/local/share/applications

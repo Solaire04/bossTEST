@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=boss
+Comment=Brock Optical Spectroscopy Software
+Exec=/usr/local/bin/boss
+Icon=/usr/local/share/icons/hicolor/512x512/apps/boss.png
+Path=
+Terminal=false
+StartupNotify=false

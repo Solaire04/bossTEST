@@ -1,6 +1,6 @@
 #!/bin/bash
 # the next line restarts using wish\
-LD_LIBRARY_PATH="/opt/ASI_linux_mac_SDK_V1.37/lib/x64:$LD_LIBRARY_PATH" exec wish "$0" "$@"
+LD_LIBRARY_PATH="/opt/ASI_linux_mac_SDK_V1.38/lib/x64:$LD_LIBRARY_PATH" exec wish "$0" "$@"
 
 ### if the ASI libraries are installed in the search path, this is all that is needed
 ###exec wish "$0" "$@"
@@ -11,7 +11,7 @@ LD_LIBRARY_PATH="/opt/ASI_linux_mac_SDK_V1.37/lib/x64:$LD_LIBRARY_PATH" exec wis
 ### Requires: tcl/tk, blt, tclib, libtk-img, tklib, bwidget, critcl and C compiler and tools; try:
 ###   sudo apt-get build-essential tcl-dev tk-dev blt-dev critcl bwidget tklib libtk-img
 ### For camera support, needs the shared object library from ZWO: look in https://www.zwoastro.com/software/
-### Assumed installed in /opt/ASI_linux_mac_SDK_V1.37 or something similar
+### Assumed installed in /opt/ASI_linux_mac_SDK_V1.38 or something similar
 ### ZWO installation provides several udev rules, e.g. /etc/udev/rules.d/99-zwo.rules as distributed
 ###
 ### Written by edward.sternin@brocku.ca
@@ -111,8 +111,8 @@ R4Y8woWJBIYIYNxMUUGlz6BDix5NWlIgADs=
 if {$DEBUG} { puts "DEBUG: [package ifneeded critcl [package present critcl]]" }
 
 ### hardware access API through the manufacturer's C library; this may need to be added to LD_LIBRARY_PATH at run-time
-critcl::cheaders -I/opt/ASI_linux_mac_SDK_V1.37/include
-critcl::clibraries -L/opt/ASI_linux_mac_SDK_V1.37/lib/x64
+critcl::cheaders -I/opt/ASI_linux_mac_SDK_V1.38/include
+critcl::clibraries -L/opt/ASI_linux_mac_SDK_V1.38/lib/x64
 critcl::clibraries -lASICamera2
 
 critcl::ccode {

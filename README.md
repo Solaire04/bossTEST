@@ -22,7 +22,7 @@ sudo install -m 644 logo.png /usr/local/share/icons/hicolor/512x512/apps/boss.pn
 sudo install -m 644 boss.desktop /usr/local/share/applications
 sudo install -m 755 boss /usr/local/bin
 ```
-and be sure to download and untar into `/opt/ASI_linux_mac_SDK_V1.37` (or similar, but then adjust the pointers in the main file) the libraries provided by ZWO.
+and be sure to download and untar into `/opt/ASI_linux_mac_SDK_V1.38` (or similar, but then adjust the pointers in the main file) the libraries provided by ZWO.
 
 Running from a terminal, you may simply type `boss` (or `/usr/local/bin/boss`). If things do not work, try 
 ```

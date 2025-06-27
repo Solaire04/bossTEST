@@ -4,30 +4,38 @@ LD_LIBRARY_PATH="/opt/ASI_linux_mac_SDK_V1.37/lib/x64:$LD_LIBRARY_PATH" exec wis
 
 ### if the ASI libraries are installed in the search path, this is all that is needed
 ###exec wish "$0" "$@"
-### can also be launched under other versions of wish, for example under Androwish or its non-Android relatives:
-#exec /usr/local/bin/undroidwish "$0" -sdlrootheight 720 -sdlrootwidth 1600 -sdlheight 720 -sdlwidth 1600 -sdlresizable "$@"
-#exec /usr/local/bin/vanillawish "$0" "$@"
 
+### -----------------------------------------------------------------------------
 ### BOSS - Brock Optical Spectroscopy Software
 ###   
-### Requires: tcl/tk, blt, tclib, bwidget, critcl and C compiler and tools; try:
-###   sudo apt-get build-essential tcl-dev tk-dev blt-dev critcl bwidget libtk-img
+### Requires: tcl/tk, blt, tclib, libtk-img, tklib, bwidget, critcl and C compiler and tools; try:
+###   sudo apt-get build-essential tcl-dev tk-dev blt-dev critcl bwidget tklib libtk-img
 ### For camera support, needs the shared object library from ZWO: look in https://www.zwoastro.com/software/
 ### Assumed installed in /opt/ASI_linux_mac_SDK_V1.37 or something similar
-### ZWO installation provides several udev rules, e.g. /etc/udev/rules.d/99-zwo.rules
+### ZWO installation provides several udev rules, e.g. /etc/udev/rules.d/99-zwo.rules as distributed
 ###
 ### Written by edward.sternin@brocku.ca
 ### 2025.06: initial release, tk8.6 Ubuntu 24.04LTS, for ASI294MM and ASI2600MM (mono) cameras
 ###
 
+### at runtime, can set the DEBUG flag, if passed as the first parameter
+set DEBUG 0
+switch -- $argc {
+  0 { }
+  1 { if {[lindex $argv 0]=="DEBUG"} { set DEBUG 1 } }
+  default { puts "$APPNAME invoked with too many arguments ($argc), abort."; exit}
+  }
+
 set APPNAME     [lindex [file split [info script]] end]
 set PLATFORM    [lindex [array get tcl_platform os] 1]
-set VERSION     2025.06.25
+set VERSION     2025.06.26
+
+if {$DEBUG} {puts "DEBUG: $APPNAME@$PLATFORM invoked with DEBUG"}
+
 set PWD         [pwd]
 set RCNAME      [file join [cd; pwd] .${APPNAME}rc]
 set MIN_W       1080
 set MIN_H       720
-set DEBUG       0
 set TABS        {Settings LiveView Spectrum}
 
 set zoomFactors { 16 8 4 2 1 }
@@ -38,18 +46,9 @@ set DEFAULTS    {
   expTime	{v 100 		h "exposure time" }
   expUnit	{v "ms"		h "time units" }
   imgZoom	{v 4		h "camera image zoom factor" }
-  macroFile	{v ""		h "file(.bcm) with Boss Command Macro script" }
+  macroFile	{v ""		h "file(.bcm) with BOSS Command Macro script" }
   ROI		{v "0 1200 2821 1250" h "Region Of Interest, in pixels" }
   }
-
-### at runtime, can set the DEBUG flag, if passed as the first parameter
-switch -- $argc {
-  0 { }
-  1 { if {[lindex $argv 0]=="DEBUG"} { set DEBUG 1 } }
-  default { puts "$APPNAME invoked with too many arguments ($argc), abort."; exit}
-  }
-
-if {$DEBUG} {puts "DEBUG: $APPNAME@$PLATFORM invoked with DEBUG"}
 
 ### ensure all needed libraries are available ---------------------------------------
 
@@ -68,7 +67,10 @@ else {
     }
   } 
 if { [catch {package require Tcl; package require tcl::chan::string; package require base64 }] } {
-  puts stderr "tcllib is missing, maybe `sudo apt-get install tclib`\n"; exit 1
+  puts stderr "tcllib is missing, maybe `sudo apt-get install tcllib`\n"; exit 1
+  }  
+if { [catch {package require tooltip }] } {
+  puts stderr "tklib is missing, maybe `sudo apt-get install tklib`\n"; exit 1
   }  
 if { [catch {package require Img; package require img::raw}] } {
   puts stderr "Img package is missing, maybe `sudo apt-get install img`\n"; exit 1
@@ -85,7 +87,7 @@ if { [catch {set BLTversion [package require BLT]}] } {
 namespace import ::blt::*
 proc InitCrosshairs {g} {Blt_Crosshairs $g; Blt_ZoomStack $g}
 
-### include the base64-encoded images for buttons ----------------------------------------------
+### include the base64-encoded images for buttons ----------------------
 
 image create photo button_open -data {
 R0lGODdhGAAYAPYAAP///wcHBwgICBMTExQUFBYWFhwcHB8fHycnJy8vL0BAQCsrK0pKSjIy
@@ -104,7 +106,7 @@ UJLDG4uAZ816ywHkAaEFPilk9DhBF0XdE3ZR2L0h4kCmDEpolBhMeLAJwlgrFAoggYRjxyMi
 R4Y8woWJBIYIYNxMUUGlz6BDix5NWlIgADs=
    }
 
-### tcl-to-C access through critcl
+### tcl-to-C access through critcl -------------------------------------
 
 if {$DEBUG} { puts "DEBUG: [package ifneeded critcl [package present critcl]]" }
 
@@ -227,7 +229,7 @@ critcl::load
 
 if {$DEBUG} { puts "DEBUG: all critcl subroutines have been declared" }
 
-### tcl service routines and C wrappers --------------------------------------------------------
+### tcl service routines and C wrappers ----------------------------------------
 
 proc setStatus { state message } {
    global .status.led .status.text
@@ -728,7 +730,8 @@ proc getSnapshot {} {
     return
     }\
   else {
-    if {$DEBUG} { puts "DEBUG: exposure successfully set to [getValue $cameraId [getControlIndex Exposure]] \u03BCs" }
+    .ts.lv.tbar.snap configure -bg red -fg white
+    if {$DEBUG} { puts "DEBUG: exposure successfully started for [getValue $cameraId [getControlIndex Exposure]] \u03BCs" }
     }
   after 10
   image delete $imgImg
@@ -759,6 +762,7 @@ proc getSnapshot {} {
       update; after 1000;
       if { [catch {ASIInitCamera $cameraId}] } {
         setStatus "error" " Error initializing camera $i, should never happen..."
+        .ts.lv.tbar.snap configure -bg white -fg red
         after 1000
         return
         }
@@ -772,6 +776,7 @@ proc getSnapshot {} {
   set status [ASIStopExposure $cameraId]
   if {"$ASI_ERROR_CODE($status)" != "ASI_SUCCESS"} { 
     setStatus "error" "StopExposure reports $ASI_ERROR_CODE($status), aborting"
+    .ts.lv.tbar.snap configure -bg white -fg red
     return
     }
   after 10
@@ -783,6 +788,7 @@ proc getSnapshot {} {
     puts "  Gain = [getValue $cameraId [getControlIndex Gain]]"
     puts "  Temperature = [expr [getValue $cameraId [getControlIndex Temperature]] / 10.0]\u00B0C"
     }
+  .ts.lv.tbar.snap configure -bg white -fg red
   displayImg
   }
 
@@ -814,7 +820,8 @@ proc displaySpectrum {x1 y1 x2 y2} {
   set AOI [string range $AOI $headerLength end-1]
   if {$DEBUG} { puts "DEBUG: AOI is $imgW x $imgH, [string length $AOI] bytes" }
   set cp [::tcl::chan::string $AOI]
-  vector create ::z ::col
+  newVector ::z ""
+  newVector ::col ""
   ::z binread $cp -format "u2"; ::z matrix numcols $h_size
   chan close $cp
   unset AOI
@@ -1041,9 +1048,9 @@ table configure .ts.settings -propagate true
 .ts tab configure Settings -window .ts.settings -anchor n
 
 set fileName ""
-vector create ::x
-vector create ::y
-vector create ::z
+newVector ::x ""
+newVector ::y ""
+newVector ::z ""
 
 # the second tab is a live view of the camera field, snapshot or continuous
 
@@ -1178,6 +1185,27 @@ bind .ts.sp.g <Motion> {atXhairs .ts.sp.g}
 
 .ts tab configure Spectrum -window .ts.sp -anchor nw
 
+### pop-up help ----------------------------------------------------------------------------
+
+tooltip::tooltip .ts.lv.tbar.vdev "Select the camera from the list\nIf only one, it will autoconnect"
+tooltip::tooltip .ts.settings.actions.saveConfig "Save the settings into a .cfg file"
+tooltip::tooltip .ts.settings.actions.loadConfig "Load the settings from a .cfg file"
+tooltip::tooltip .ts.settings.executeMacro "Execute the tcl commands from the widget below"
+tooltip::tooltip .ts.lv.tbar.reset "(Re)Connect the selected camera"
+tooltip::tooltip .ts.lv.tbar.cool "Toggle the power to the camera sensor cooler"
+tooltip::tooltip .ts.lv.tbar.snap "Get a full-frame snapshot from the camera"
+tooltip::tooltip .ts.lv.tbar.loop "Continuous snapshots. Uncheck to stop the (infinite) loop."
+tooltip::tooltip .ts.lv.tbar.target "Turn cooler power on to reach this temperature\nHit <Enter> in the widget to change value"
+tooltip::tooltip .ts.lv.tbar.temp "Current temperature of the camera sensor"
+tooltip::tooltip .ts.lv.tbar.etime "Exposure time\nHit <Enter> in the widget to change value"
+tooltip::tooltip .ts.lv.tbar.zoom "The zoom settings affects display only,\nfull-resolution image remains in memory"
+tooltip::tooltip .ts.sp.tbar.roi "Region Of Interest\nHit <Enter> in the widget to recalculate the spectrum from ROI"
+tooltip::tooltip .ts.sp.tbar.reset "Recalculate the spectrum from ROI"
+tooltip::tooltip .ts.sp.tbar.dy "Size of the band of interest, in pixels\nHit <Enter> in the widget to recalculate ROI & the spectrum"
+tooltip::tooltip .ts.sp.rbar.vs "Start of the band of interest, in pixels\nHit <Enter> in the widget to recalculate ROI & the spectrum"
+tooltip::tooltip .ts.sp.rbar.x "x-coordinate of the cursor, in pixels"
+tooltip::tooltip .ts.sp.rbar.y "y-coordinate of the cursor, in spectral intensity"
+
 ### tcl main code ----------------------------------------------------------------------------
 
 update
@@ -1211,7 +1239,7 @@ if {$cameraId >= 0} {
   set targetMin [dict get $cameraControls(TargetTemp) min]000
   set targetMax [dict get $cameraControls(TargetTemp) max]
   .ts.lv.tbar.target configure -from $targetMin -to $targetMax -increment 1 
-  .ts.lv.tbar.snap configure -fg red
+  .ts.lv.tbar.snap configure -fg red -bg white
   .ts.lv.tbar.reset configure -fg black
   }
 

@@ -1,0 +1,42 @@
+cd ~/tcl
+git clone https://github.com/coolshou/linux-gpib.git
+cd linux-gpib/linux-gpib-kernel/
+make
+sudo make install
+cd ../linux-gpib-user/
+./bootstrap
+./configure --prefix=/usr --sysconfdir=/etc
+echo <<EOT >include/gpib/version_subst 
+s/^/#define GPIB_MAJOR_VERSION /
+s/\./\n#define GPIB_MINOR_VERSION /
+s/\./\n#define GPIB_MICRO_VERSION /
+s/\-.*$//
+EOT
+make clean
+make
+sudo make install
+
+cd ~/tcl
+git clone https://github.com/slazav/tcl-gpib.git
+cd tcl-gpib/tcl-gpib
+make
+### sudo make install
+## suggests
+### mkdir -p /usr/lib64/tcl /usr/share/tcl/LibGpib-1.4
+### install -m644 libgpib.so   /usr/lib64/tcl
+### install -m644 pkgIndex.tcl /usr/share/tcl/LibGpib-1.4
+
+## but this is not where things are on ubuntu... 
+### $ tclsh
+### % puts $tcl_pkgPath
+### /usr/local/lib/tcltk /usr/local/share/tcltk /usr/lib/tcltk/x86_64-linux-gnu /usr/lib/tcltk /usr/share/tcltk /usr/lib/tcltk/tcl8.6 /usr/lib
+### % puts $auto_path
+### /usr/share/tcltk/tcl8.6 /usr/share/tcltk /usr/lib /usr/local/lib/tcltk /usr/local/share/tcltk /usr/lib/tcltk/x86_64-linux-gnu /usr/lib/tcltk /usr/lib/tcltk/tcl8.6
+
+### maybe this:
+##sudo make install tcldatadir=/usr/share/tcltk tcllibdir=/usr/local/lib
+### or this:
+##make -n install tcldatadir=/usr/lib/tcltk/x86_64-linux-gnu tcllibdir=/usr/lib/tcltk/x86_64-linux-gnu/LibGpib-1.4
+#sudo mkdir -p /usr/share/tcltk/LibGpib-1.4
+#sudo install -m644 pkgIndex.tcl /usr/share/tcltk/LibGpib-1.4
+sudo install -m755 libgpib.so /usr/local/lib

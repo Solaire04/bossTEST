@@ -23,23 +23,25 @@ set DEBUG 0
 switch -- $argc {
   0 { }
   1 { if {[lindex $argv 0]=="DEBUG"} { set DEBUG 1 } }
-  default { puts "$APPNAME invoked with too many arguments ($argc), abort."; exit}
+  default { puts stderr "$APPNAME invoked with too many arguments ($argc), abort."; exit}
   }
 
 set APPNAME     [lindex [file split [info script]] end]
 set PLATFORM    [lindex [array get tcl_platform os] 1]
 set VERSION     2025.06.26
 
-if {$DEBUG} {puts "DEBUG: $APPNAME@$PLATFORM invoked with DEBUG"}
+if {$DEBUG} {puts stderr "DEBUG: $APPNAME@$PLATFORM invoked with DEBUG"}
 
 set PWD         [pwd]
 set RCNAME      [file join [cd; pwd] .${APPNAME}rc]
 set MIN_W       1080
 set MIN_H       720
-set TABS        {Settings LiveView Spectrum}
+set TABS        {Settings LiveView Spectrum GPIB}
 
 set zoomFactors { 16 8 4 2 1 }
 set imgZoomDefault 4
+
+interp alias {} chr {} format %c
 
 set DEFAULTS    {
   targetTemp    {v 5		h "sensor cooling target, down to 35\u00B0C below ambient" }
@@ -48,7 +50,15 @@ set DEFAULTS    {
   imgZoom	{v 4		h "camera image zoom factor" }
   macroFile	{v ""		h "file(.bcm) with BOSS Command Macro script" }
   ROI		{v "0 1200 2821 1250" h "Region Of Interest, in pixels" }
+  gpibCommands	{v "id *IDN? reset *RST triac O2000] volt \{MEAS:VOLT:DC? DEF,DEF\}" h "Known GPIB commands" }
   }
+
+#set GPIB [dict create \
+#  id	"*IDN?" \
+#  reset	"*RST" \
+#  triac	"O2000[chr 0x00]" \
+#  volt	"MEAS:VOLT:DC? DEF,DEF" \
+#  ]
 
 ### ensure all needed libraries are available ---------------------------------------
 
@@ -61,7 +71,7 @@ else {
     # some tcl/tk implementations do not implement ::tk::dialog
     # do a dummy file load, to import the ::dialog:: space, change these tkfbox settings
     # from the system-wide defaults, typically in /usr/share/tk8.5/tkfbox.tcl
-    if {$DEBUG} { puts "DEBUG: changing the defaults settings for hidden files" }
+    if {$DEBUG} { puts stderr "DEBUG: changing the defaults settings for hidden files" }
     set ::tk::dialog::file::showHiddenBtn 1
     set ::tk::dialog::file::showHiddenVar 0
     }
@@ -87,6 +97,13 @@ if { [catch {set BLTversion [package require BLT]}] } {
 namespace import ::blt::*
 proc InitCrosshairs {g} {Blt_Crosshairs $g; Blt_ZoomStack $g}
 
+load /usr/local/lib/libgpib.so
+#load ../tcl-gpib/tcl-gpib/libgpib.so
+if { [catch {package require GpibLib}] } {
+  puts stderr "GpibLib package is missing, download from https://github.com/slazav/tcl-gpib"
+  exit 1
+  }
+
 ### include the base64-encoded images for buttons ----------------------
 
 image create photo button_open -data {
@@ -105,10 +122,20 @@ oUGzpk2bRSQIEvDghxQOM28KpbmDwaALSZSUaDJUKI8aBQZhuBEiyJAZM7htw6qViAgBvWK0
 UJLDG4uAZ816ywHkAaEFPilk9DhBF0XdE3ZR2L0h4kCmDEpolBhMeLAJwlgrFAoggYRjxyMi
 R4Y8woWJBIYIYNxMUUGlz6BDix5NWlIgADs=
    }
+image create photo button_attach -data {
+   R0lGODdhEAAQAPMAAAAAANzc3MPDw4CAgFhYWKCgoMDAAP//////AEBAAAAAAAAAAAAAAAAA
+   AAAAAAAAACwAAAAAEAAQAAAEPhDISau9OGuAzJZdkh0CZ4jYEQQlalKDsLJTSBHxXNo3Lq+t
+   C0GQYxVGhVwylcQ1L4cjADcgQKUSgvWC/UQAADs=
+   }
+image create photo button_detach -data {
+   R0lGODdhEAAQAPIAAAAAANzc3P///6CgoMPDw4CAgFhYWDAwMCwAAAAAEAAQAAADSQi6zDIt
+   qieFXTSKwAXI0sAFwlERitiZDoceKskUxIgC6q0YtA3AhALDwKu5FAVDwxA0EiBKzaA3lXym
+   PGwFAuAlt8NohGttJAAAOw==
+   }
 
 ### tcl-to-C access through critcl -------------------------------------
 
-if {$DEBUG} { puts "DEBUG: [package ifneeded critcl [package present critcl]]" }
+if {$DEBUG} { puts stderr "DEBUG: [package ifneeded critcl [package present critcl]]" }
 
 ### hardware access API through the manufacturer's C library; this may need to be added to LD_LIBRARY_PATH at run-time
 critcl::cheaders -I/opt/ASI_linux_mac_SDK_V1.38/include
@@ -227,7 +254,7 @@ critcl::cproc ASIGetDataAfterExp {int cameraId int imgSize} object0 {
 
 critcl::load
 
-if {$DEBUG} { puts "DEBUG: all critcl subroutines have been declared" }
+if {$DEBUG} { puts stderr "DEBUG: all critcl subroutines have been declared" }
 
 ### tcl service routines and C wrappers ----------------------------------------
 
@@ -248,7 +275,7 @@ proc DefaultGeometry {} {
   set wmX [expr $wmW / 8]
   set wmY [expr $wmH / 8]
   set wmG "${wmW}x${wmH}+${wmX}+${wmY}"
-  if ($DEBUG) { puts "DEBUG: $wmW x $wmH screen detected, shifting by +$wmX,+$wmY" }
+  if ($DEBUG) { puts stderr "DEBUG: $wmW x $wmH screen detected, shifting by +$wmX,+$wmY" }
   return $wmG
   } 
    
@@ -297,7 +324,7 @@ proc SaveSettings { interactive fname } {
       set pH [set ${paramName}_h]
       dict set settings $paramName "v \"$pV\" h \"$pH\""
       set paramValue [dict get $settings $paramName]
-      if ($DEBUG) { puts "DEBUG: saving $paramName = {$paramValue}"}
+      if ($DEBUG) { puts stderr "DEBUG: saving $paramName = {$paramValue}"}
       set pV [dict get $paramValue v]
       set pH [dict get $paramValue h]
       puts $file "$paramName\t{v \"$pV\" h \"$pH\"}" 
@@ -317,11 +344,11 @@ proc LoadSettings { interactive fname } {
     set filename $fname
     }
   if { [catch {set file [open $filename "r"]}] } {
-    if ($DEBUG) { puts "DEBUG: File missing/unable to read \"$filename\", check read permissions" }
+    if ($DEBUG) { puts stderr "DEBUG: File missing/unable to read \"$filename\", check read permissions" }
     return
     }\
   else {
-    if ($DEBUG) { puts "DEBUG: Loading settings from $filename" }
+    if ($DEBUG) { puts stderr "DEBUG: Loading settings from $filename" }
     set settings [read $file]
     close $file
     UpdateSettings
@@ -333,7 +360,7 @@ proc UpdateSettings {} {
   foreach paramName [dict keys $settings] {
     global $paramName ${paramName}_h
     set paramValue [dict get $settings $paramName]
-    if {$DEBUG} { puts "DEBUG: $paramName = $paramValue"}
+    if {$DEBUG} { puts stderr "DEBUG: $paramName = $paramValue"}
     set $paramName [dict get $paramValue v]
     set ${paramName}_h [dict get $paramValue h]
     }
@@ -355,7 +382,7 @@ proc SaveROI {x1 y1 x2 y2 fname} {
   set h_size [expr $x2 - $x1]
   set v_size [expr $y2 - $y1]
   if {[expr $h_size*$v_size] == 0} { setStatus "error" "there is no ROI to save"; return } 
-  if {$DEBUG} { puts "DEBUG: saving $h_size x $v_size ROI from $imgH x $imgW $RAW_IMG_TYPE($imgType) image" }
+  if {$DEBUG} { puts stderr "DEBUG: saving $h_size x $v_size ROI from $imgH x $imgW $RAW_IMG_TYPE($imgType) image" }
   
   switch $ftype {
     raw -
@@ -363,13 +390,13 @@ proc SaveROI {x1 y1 x2 y2 fname} {
       if { [catch {set fp [open $filename "w"]}] } {
         setStatus "error" "Error opening file \"$filename\", check write permissions"; return }
       set AOI [base64::decode [$imgImg data -format $ftype -grayscale -from $x1 $y1 $x2 $y2]]
-      if {$DEBUG} { puts "DEBUG: AOI is $h_size x $v_size, [string length $AOI] bytes" }
+      if {$DEBUG} { puts stderr "DEBUG: AOI is $h_size x $v_size, [string length $AOI] bytes" }
       fconfigure $fp -translation binary -encoding binary
       puts -nonewline $fp $AOI
       close $fp
       }
     default {
-      if {$DEBUG} { puts "DEBUG: saving file type \"$ftype\" is not (yet) implemented"; return }
+      if {$DEBUG} { puts stderr "DEBUG: saving file type \"$ftype\" is not (yet) implemented"; return }
       }
     }
   setStatus "ok" "Saved ROI as $filename"
@@ -382,7 +409,7 @@ proc saveFile { fname } {
   set file_types {}
   lappend file_types "\{ $ftype \} \{.$ftype [string toupper .$ftype] \}"
   lappend file_types { {All Files} * }
-  if {$DEBUG} { puts "DEBUG: filename is \"$filename\" ftype \"$ftype\""; puts "DEBUG: $file_types" } 
+  if {$DEBUG} { puts stderr "DEBUG: filename is \"$filename\" ftype \"$ftype\"\nDEBUG: $file_types" } 
   if { "$filename" == "" } { 
     set filename [tk_getSaveFile -filetypes $file_types \
       -initialdir $WorkDir -initialfile img-[clock format [clock seconds] -format %Y%m%d%H%M%S]]
@@ -452,7 +479,7 @@ proc LoadFile { type } {
       return
       }
     }
-  if {$DEBUG} { puts "DEBUG: loaded [image width $imgImg]x[image height $imgImg] $ftype image" }
+  if {$DEBUG} { puts stderr "DEBUG: loaded [image width $imgImg]x[image height $imgImg] $ftype image" }
   lset ROI 0 0;  lset ROI 2 [image width $imgImg]
   set v_shift [lindex $ROI 1]
   set v_size [expr [lindex $ROI 3] - $v_shift]
@@ -614,7 +641,7 @@ proc getControlCaps { id } {
   set allControls ""
   for {set i 0} {$i<$nControls} {incr i} { 
     set allControls [concat $allControls [ASIGetControlValue $id $i]]
-    #if {$DEBUG} {puts "DEBUG: control $i: [ASIGetControlValue $id $i]" }
+    #if {$DEBUG} {puts stderr "DEBUG: control $i: [ASIGetControlValue $id $i]" }
     }
   return $allControls
   }
@@ -657,7 +684,7 @@ proc connectCamera {} {
     set cameraId -1
     return TCL_ERROR
     }
-  if {$DEBUG} { puts "DEBUG: camera $cameraId connected" }
+  if {$DEBUG} { puts stderr "DEBUG: camera $cameraId connected" }
   return TCL_OK
   }
 
@@ -721,7 +748,7 @@ proc getSnapshot {} {
   if {$cameraInfo(name) == "ZWO ASI294MM Pro" } { set binType 2 } else { set binType 1 }
   set imgWidth [expr $cameraInfo(width) / $binType]
   set imgHeight [expr $cameraInfo(height) / $binType]
-  if {$DEBUG} { puts "DEBUG: image ${imgWidth}x${imgHeight}, type=$imgType \u2208($cameraInfo(vformats)), bin=$binType \u2208($cameraInfo(bins))" }
+  if {$DEBUG} { puts stderr "DEBUG: image ${imgWidth}x${imgHeight}, type=$imgType \u2208($cameraInfo(vformats)), bin=$binType \u2208($cameraInfo(bins))" }
 
   set delayLoopCount 0
   ASISetROIFormat $cameraId $imgWidth $imgHeight $binType $imgType
@@ -736,7 +763,7 @@ proc getSnapshot {} {
     }\
   else {
     .ts.lv.tbar.snap configure -bg red -fg white
-    if {$DEBUG} { puts "DEBUG: exposure successfully started for [getValue $cameraId [getControlIndex Exposure]] \u03BCs" }
+    if {$DEBUG} { puts stderr "DEBUG: exposure successfully started for [getValue $cameraId [getControlIndex Exposure]] \u03BCs" }
     }
   after 10
   image delete $imgImg
@@ -745,11 +772,11 @@ proc getSnapshot {} {
   set delayLoopCount 0
   set TIME_STEP 100
   set maxLoopCount [expr $t / ($TIME_STEP*1000) + 10]; # 10 extra steps = 1s, to make sure
-  if {$DEBUG} { puts "DEBUG: expect LoopCount to not exceed $maxLoopCount" }
+  if {$DEBUG} { puts stderr "DEBUG: expect LoopCount to not exceed $maxLoopCount" }
   while { $delayLoopCount < $maxLoopCount } {
     incr delayLoopCount
     set status [ASIGetExpStatus $cameraId]
-    if {$DEBUG} { puts "DEBUG: exposure $ASI_EXPOSURE_STATUS($status) ($delayLoopCount)" }
+    if {$DEBUG} { puts stderr "DEBUG: exposure $ASI_EXPOSURE_STATUS($status) ($delayLoopCount)" }
     if {"$ASI_EXPOSURE_STATUS($status)" == "WORKING"} {
       after $TIME_STEP
       setStatus "warning" "Waiting ($delayLoopCount) for exposure to complete [format %.1f [expr $delayLoopCount * $TIME_STEP/1000.0]]s"
@@ -757,7 +784,7 @@ proc getSnapshot {} {
       }\
     elseif {"$ASI_EXPOSURE_STATUS($status)" == "SUCCESS"} { 
       set imgData [ASIGetDataAfterExp $cameraId $imgSize]
-      if {$DEBUG} { puts "DEBUG: [expr $imgWidth * $imgHeight] pixels requested, [expr [string length $imgData]/2] pixels received" }
+      if {$DEBUG} { puts stderr "DEBUG: [expr $imgWidth * $imgHeight] pixels requested, [expr [string length $imgData]/2] pixels received" }
       setStatus "ok" "Exposure completed in [format %.1f [expr $delayLoopCount * $TIME_STEP/1000.0]] s"; update
       $imgImg put "Magic=RAW\nWidth=$imgWidth\nHeight=$imgHeight\nNumChan=1\nByteOrder=Intel\nScanOrder=TopDown\nPixelType=$RAW_IMG_TYPE($imgType)\n$imgData" -format raw
       break
@@ -786,12 +813,12 @@ proc getSnapshot {} {
     }
   after 10
   if {$DEBUG} {
-    puts "DEBUG: image acquired in $delayLoopCount tries, with a [format %.1f [expr $delayLoopCount * 0.2]]-s delay:"
-    puts "  AutoExpTargetBrightness = [getValue $cameraId [getControlIndex AutoExpTargetBrightness]]"
-    puts "  AutoExpMaxGain = [getValue $cameraId [getControlIndex AutoExpMaxGain]]"
-    puts "  Exposure = [getValue $cameraId [getControlIndex Exposure]]"
-    puts "  Gain = [getValue $cameraId [getControlIndex Gain]]"
-    puts "  Temperature = [expr [getValue $cameraId [getControlIndex Temperature]] / 10.0]\u00B0C"
+    puts stderr "DEBUG: image acquired in $delayLoopCount tries, with a [format %.1f [expr $delayLoopCount * 0.2]]-s delay:"
+    puts stderr "  AutoExpTargetBrightness = [getValue $cameraId [getControlIndex AutoExpTargetBrightness]]"
+    puts stderr "  AutoExpMaxGain = [getValue $cameraId [getControlIndex AutoExpMaxGain]]"
+    puts stderr "  Exposure = [getValue $cameraId [getControlIndex Exposure]]"
+    puts stderr "  Gain = [getValue $cameraId [getControlIndex Gain]]"
+    puts stderr "  Temperature = [expr [getValue $cameraId [getControlIndex Temperature]] / 10.0]\u00B0C"
     }
   .ts.lv.tbar.snap configure -bg white -fg red
   displayImg
@@ -821,9 +848,9 @@ proc displaySpectrum {x1 y1 x2 y2} {
   set AOI [base64::decode [$imgImg data -format raw -grayscale -from $x1 $y1 $x2 $y2]]
   #set AOI [$imgImg data -format raw -grayscale -from $x1 $y1 $x2 $y2] 
   set headerLength [expr [string length $AOI] - $h_size*$v_size - 1 ]
-  if {$DEBUG} {puts "DEBUG: header of $headerLength bytes is:\n[string range $AOI 0 $headerLength]" }
+  if {$DEBUG} {puts stderr "DEBUG: header of $headerLength bytes is:\n[string range $AOI 0 $headerLength]" }
   set AOI [string range $AOI $headerLength end-1]
-  if {$DEBUG} { puts "DEBUG: AOI is $imgW x $imgH, [string length $AOI] bytes" }
+  if {$DEBUG} { puts stderr "DEBUG: AOI is $imgW x $imgH, [string length $AOI] bytes" }
   set cp [::tcl::chan::string $AOI]
   newVector ::z ""
   newVector ::col ""
@@ -844,7 +871,7 @@ proc displaySpectrum {x1 y1 x2 y2} {
     set ::y([expr 2*$j+1]) $::col(sum)
     }
   ###}]
-  ###puts "Summing up $h_size columns of length $v_size took [format %.3f [expr [lindex $tt 0] / 1000]] ms"; unset tt
+  ###puts stderr "Summing up $h_size columns of length $v_size took [format %.3f [expr [lindex $tt 0] / 1000]] ms"; unset tt
   vector destroy ::col ::z
 
   .ts.sp.g marker configure bg -image $imgImg
@@ -863,7 +890,7 @@ proc displaySpectrum {x1 y1 x2 y2} {
 proc powerOff {} {
   global DEBUG run cameraId
   set run false
-  if {$DEBUG} { puts "DEBUG: closing the camera connection" }
+  if {$DEBUG} { puts stderr "DEBUG: closing the camera connection" }
   after 100
   if {$cameraId < 0} {exit}
   if { [catch {ASICloseCamera $cameraId}] } {
@@ -885,9 +912,9 @@ proc atXhairs { g } {
   }
 
 
-if {$DEBUG} { puts "DEBUG: end of subroutine declarations" }
+if {$DEBUG} { puts stderr "DEBUG: end of subroutine declarations" }
 
-set basefontsize 11
+set basefontsize 12
 set fontDefault Arial
 set fontWeight normal
 
@@ -931,23 +958,12 @@ set imgType 2
 set imgH $MIN_H
 set imgW $MIN_W
 set ROI "0 [expr $imgH/2] $imgW [expr $imgH/2+50]"
+set gpib_board "0"
+set dev_addr "22"
 
-set basefontsize 11
-set fontDefault Arial
-set fontWeight normal
-
-set fontSize(small)  [expr {round($basefontsize * 0.80)}]
-set fontSize(base)   [expr {round($basefontsize)}]
-set fontSize(large)  [expr {round($basefontsize * 1.25)}];# 1.25
-foreach f { TkDefaultFont TkTextFont TkMenuFont TkCaptionFont TkIconFont TkTooltipFont } {
-  font configure $f -family $fontDefault -size $fontSize(base) -weight $fontWeight
-  }
-font configure TkHeadingFont -family $fontDefault -size $fontSize(large) -weight $fontWeight
-font configure TkSmallCaptionFont -family $fontDefault -size $fontSize(small) -weight $fontWeight
-font configure TkFixedFont -family Courier -size $fontSize(base) -weight $fontWeight
-
+### update settings from the values saved in ~/.bossrc file
 if { [catch {set file [open $RCNAME "r"]}] } {
-  if {$DEBUG} { puts "DEBUG: unable to read $RCNAME, defaulting all settings\n" }
+  if {$DEBUG} { puts stderr "DEBUG: unable to read $RCNAME, defaulting all settings\n" }
   set settings [linsert $DEFAULTS 0 WorkDir "v $PWD h \"current work directory\""]
   set wmG [DefaultGeometry]
   lappend settings wmG "v $wmG h \"wm geometry\""
@@ -963,10 +979,10 @@ set h_shift [expr [lindex $ROI 0]]
 set h_size [expr [lindex $ROI 2] - [lindex $ROI 0]]
 
 cd "$WorkDir" 
-if {$DEBUG} { puts "DEBUG: in $WorkDir" }
+if {$DEBUG} { puts stderr "DEBUG: in $WorkDir" }
 
 ### interface --------------------------------------------------------------------------------
-if {$DEBUG} { puts "DEBUG: configuring GUI" }
+if {$DEBUG} { puts stderr "DEBUG: configuring GUI" }
 
 wm geometry . $wmG; wm title . "$APPNAME v.$VERSION ($PLATFORM)"
 wm minsize . $MIN_W $MIN_H
@@ -1031,7 +1047,7 @@ frame .ts.settings.macro -width 60 -height 10
 text .ts.settings.macro.script -background white -yscrollcommand ".ts.settings.macro.scroll set"
 if {"$macroFile" != "" } {
   if { [catch {open "$macroFile.bcm" r} fp] } {
-    puts "WARNING: Could not read the script from $macroFile.bcm"
+    puts stderr "WARNING: Could not read the script from $macroFile.bcm"
     }\
   else {
     set script [read $fp]
@@ -1191,6 +1207,113 @@ bind .ts.sp.g <Motion> {atXhairs .ts.sp.g}
 
 .ts tab configure Spectrum -window .ts.sp -anchor nw
 
+# the fourth tab is for GPIB communications with the spectrometer
+
+set append_null 0
+#set gc [dict get $gpibCommands v]
+puts $gpibCommands
+set GPIB [dict create]
+foreach {abbr command} $gpibCommands { dict append GPIB $abbr $command }
+
+proc sendGPIB {cmd} {
+  global DEBUG gpib_dev append_null Rxdata Txdata GPIB
+  if {"$cmd"==""} { set str "$Txdata" }\
+  else { if {[dict exists $GPIB $cmd]} {set str [dict get $GPIB $cmd]} else {set str "$cmd"} }
+  if {$DEBUG} {puts stderr "DEBUG: GPIB command $cmd --> ${str} ([string length ${str}])"}
+  if {[info exists gpib_dev]} {
+    set Rxdata ""; setStatus "ok" "Sending \"$str\" to GPIB device $gpib_dev"
+    if {$append_null || "$str"=="O2000"} {$gpib_dev write "$str[chr 0x00]"} else {$gpib_dev write "$str"}
+    # if the sent command contained "?", expect a reply
+    if {[string first "?" $str] != -1} {
+      if {[catch {$gpib_dev read} Rxdata]} {set Rxdata ""; setStatus "error" "Error reading from $gpib_dev"}
+      }
+    }\
+  else { setStatus "warning" "No GPIB device connected" }
+  update
+  }
+
+proc connectGPIB { } {
+  global DEBUG gpib_board dev_addr gpib_dev
+  if {[info exists gpib_dev]} {
+    setStatus "ok" "Disconnecting from $gpib_dev"
+    $gpib_dev go_to_local
+    gpib_device delete $gpib_dev
+    unset gpib_dev
+    .ts.gpib.tbar.link configure -image button_attach
+    after 100; setStatus "" "Ready"
+    }\
+  else {
+    set gpib_dev [gpib_device "GPIB$gpib_board:$dev_addr" -board $gpib_board -address $dev_addr -trimright \n -readymask 16]
+    set dev_id [$gpib_dev cmd_read *IDN?]
+    if {$DEBUG} {puts stderr "DEBUG: Found $dev_id at $gpib_board:$dev_addr"}
+    $gpib_dev remote_enable
+    set i [$gpib_dev ready]
+    setStatus "[lindex {ok warning} $i]" "$dev_id connected as $gpib_dev, [lindex {ready busy} $i]"
+    .ts.gpib.tbar.link configure -image button_detach
+    }
+  }
+
+frame .ts.gpib
+frame .ts.gpib.tbar -relief raised -borderwidth 1
+button .ts.gpib.tbar.link -image button_attach -command {connectGPIB}
+label .ts.gpib.tbar.portlab -text "GPIB:"
+entry .ts.gpib.tbar.port -textvariable gpib_board -width 2 -background white
+label .ts.gpib.tbar.addrlab -text " Address:"
+entry .ts.gpib.tbar.addr -textvariable dev_addr -width 2 -background white
+checkbutton .ts.gpib.tbar.null -text "append NULL" -variable append_null
+
+button .ts.gpib.tbar.s -text "Send" -width 4 -command { sendGPIB "$Txdata" }
+#-------------------------------------------------------------------------------
+labelframe .ts.gpib.tx -text "Tx data" -relief raised -borderwidth 1
+entry .ts.gpib.tx.tab -font Courier -width 40 -background white -textvariable Txdata
+bind .ts.gpib.tx.tab <Return> {sendGPIB "$Txdata"}
+#-------------------------------------------------------------------------------
+labelframe .ts.gpib.rx -text "Rx data" -relief raised -borderwidth 1
+entry .ts.gpib.rx.tab -font Courier -width 40 -background white -textvariable Rxdata
+#-------------------------------------------------------------------------------
+frame .ts.gpib.td
+label .ts.gpib.td.tt -text "Known GPIB sequences"
+proc fillAliases {} {
+  global DEBUG GPIB newcmd str_newcmd
+  table .ts.gpib.td 0,0 .ts.gpib.td.tt -cspan 2
+  set newcmd ""
+  entry .ts.gpib.td.newcmd -textvariable newcmd -width 10 
+  entry .ts.gpib.td.str_newcmd -textvariable str_newcmd -width 40
+  table .ts.gpib.td 1,0  .ts.gpib.td.newcmd -anchor e 1,1 .ts.gpib.td.str_newcmd -anchor w
+  set i 2
+  foreach k [dict keys $GPIB] {
+    if {$DEBUG} {puts stderr "DEBUG: GPIB shorthand \"$k\" becomes \"[dict get $GPIB $k]\""}
+    label .ts.gpib.td.${k} -text "$k"
+    global ${k}_gpib
+    entry .ts.gpib.td.str_${k} -textvariable ${k}_gpib -width 40
+    set ${k}_gpib [dict get $GPIB $k]
+    table .ts.gpib.td $i,0 .ts.gpib.td.${k} -anchor e $i,1 .ts.gpib.td.str_${k} -anchor w
+    incr i
+    }
+  }
+fillAliases
+bind .ts.gpib.td.str_newcmd <Return> {
+  set i [llength [dict keys $GPIB]]+1
+  label .ts.gpib.td.${newcmd} -text "$newcmd"
+  global ${newcmd}_gpib
+  set ${newcmd}_gpib $str_newcmd
+  entry .ts.gpib.td.str_${newcmd} -textvariable ${newcmd}_gpib -width 40
+  table .ts.gpib.td $i,0 .ts.gpib.td.${newcmd} -anchor e $i,1 .ts.gpib.td.str_${newcmd} -anchor w
+  dict append GPIB ${newcmd} ${str_newcmd}
+  lappend gpibCommands ${newcmd} ${str_newcmd}
+  set newcmd ""; set str_newcmd ""
+  if {$DEBUG} {puts stderr "DEBUG: gpibCommands = \"$gpibCommands\""}
+  }
+
+pack .ts.gpib.tbar.s .ts.gpib.tbar.null -side right
+pack .ts.gpib.tbar.link .ts.gpib.tbar.portlab .ts.gpib.tbar.port .ts.gpib.tbar.addrlab .ts.gpib.tbar.addr -side left
+pack .ts.gpib.tbar -side top -fill x
+pack .ts.gpib.tx -fill x; pack .ts.gpib.tx.tab -anchor w -fill x
+pack .ts.gpib.rx -fill x; pack .ts.gpib.rx.tab -anchor w -fill x
+pack .ts.gpib.td -side top -fill x
+
+.ts tab configure GPIB -window .ts.gpib -anchor n -fill x
+
 ### pop-up help ----------------------------------------------------------------------------
 
 tooltip::tooltip .ts.lv.tbar.vdev "Select the camera from the list\nIf only one, it will autoconnect"
@@ -1211,18 +1334,22 @@ tooltip::tooltip .ts.sp.tbar.dy "Size of the band of interest, in pixels\nHit <E
 tooltip::tooltip .ts.sp.rbar.vs "Start of the band of interest, in pixels\nHit <Enter> in the widget to recalculate ROI & the spectrum"
 tooltip::tooltip .ts.sp.rbar.x "x-coordinate of the cursor, in pixels"
 tooltip::tooltip .ts.sp.rbar.y "y-coordinate of the cursor, in spectral intensity"
+tooltip::tooltip .ts.gpib.tx.tab "Hit <Enter> in the widget to send the command"
+tooltip::tooltip .ts.gpib.rx.tab "Response from the GPIB device, if any"
+tooltip::tooltip .ts.gpib.td.newcmd "Declare a new GPIB command alias"
+tooltip::tooltip .ts.gpib.td.str_newcmd "Hit <Enter> in the widget to add\nthe new GPIB command alias to the table"
 
 ### tcl main code ----------------------------------------------------------------------------
 
 update
 
-if {$DEBUG} { puts "DEBUG: first call to C library. If segfault now, reset camera hardware" }
+if {$DEBUG} { puts stderr "DEBUG: first call to C library. If segfault now, reset camera hardware" }
 
 # do these initializations after the widgets are in place
 
 findAllCameras
 set nCameras [llength $listOfCameras]
-if {$DEBUG} { puts "DEBUG: found $nCameras" }
+if {$DEBUG} { puts stderr "DEBUG: found $nCameras" }
 if { $nCameras > 1 } {
   setStatus "warning" "Found $nCameras cameras, select one"
   set cameraId -1
@@ -1237,11 +1364,11 @@ else {
   setStatus "error" "No compatible cameras available"
   }
 
-if {$DEBUG} { puts "DEBUG: cameraId = $cameraId now" }
+if {$DEBUG} { puts stderr "DEBUG: cameraId = $cameraId now" }
 
 if {$cameraId >= 0} {
   connectCamera; resetCamera
-  if {$DEBUG} { puts "DEBUG: cameraMode = $ASI_CAMERA_MODE([ASIGetCameraMode $cameraId])"}
+  if {$DEBUG} { puts stderr "DEBUG: cameraMode = $ASI_CAMERA_MODE([ASIGetCameraMode $cameraId])"}
   set targetMin [dict get $cameraControls(TargetTemp) min]000
   set targetMax [dict get $cameraControls(TargetTemp) max]
   .ts.lv.tbar.target configure -from $targetMin -to $targetMax -increment 1 
@@ -1250,9 +1377,13 @@ if {$cameraId >= 0} {
   .ts.lv.tbar.reset configure -fg black
   }
 
+### GPIB connection -----------------------------------------------------
+#set Txdata "MEAS:VOLT:DC? DEF,DEF"
+#set Txdata "O2000"
+
 set run true
 
-if {$DEBUG} { puts "DEBUG: starting main loop" }
+if {$DEBUG} { puts stderr "DEBUG: starting main loop" }
 while {$run == true} {
   update
   after 500

@@ -1210,8 +1210,7 @@ bind .ts.sp.g <Motion> {atXhairs .ts.sp.g}
 # the fourth tab is for GPIB communications with the spectrometer
 
 set append_null 0
-#set gc [dict get $gpibCommands v]
-puts $gpibCommands
+
 set GPIB [dict create]
 foreach {abbr command} $gpibCommands { dict append GPIB $abbr $command }
 

@@ -1289,7 +1289,7 @@ proc fillAliases {} {
   }
 fillAliases
 bind .ts.gpib.td.str_newcmd <Return> {
-  set i [llength [dict keys $GPIB]]+1
+  set i [expr [llength [dict keys $GPIB]] + 2]
   label .ts.gpib.td.${newcmd} -text "$newcmd"
   global ${newcmd}_gpib
   set ${newcmd}_gpib $str_newcmd
@@ -1298,7 +1298,7 @@ bind .ts.gpib.td.str_newcmd <Return> {
   dict append GPIB ${newcmd} ${str_newcmd}
   lappend gpibCommands ${newcmd} ${str_newcmd}
   set newcmd ""; set str_newcmd ""
-  if {$DEBUG} {puts stderr "DEBUG: gpibCommands = \"$gpibCommands\""}
+  if {$DEBUG} {puts stderr "DEBUG: row $i added, gpibCommands = \"$gpibCommands\""}
   }
 
 pack .ts.gpib.tbar.s .ts.gpib.tbar.null -side right
@@ -1306,7 +1306,7 @@ pack .ts.gpib.tbar.link .ts.gpib.tbar.portlab .ts.gpib.tbar.port .ts.gpib.tbar.a
 pack .ts.gpib.tbar -side top -fill x
 pack .ts.gpib.tx -fill x; pack .ts.gpib.tx.tab -anchor w -fill x
 pack .ts.gpib.rx -fill x; pack .ts.gpib.rx.tab -anchor w -fill x
-pack .ts.gpib.td -side top -fill x
+pack .ts.gpib.td -side top -fill x -expand 1
 
 .ts tab configure GPIB -window .ts.gpib -anchor n -fill x
 

@@ -843,7 +843,7 @@ proc displaySpectrum {x1 y1 x2 y2} {
   if {[expr $imgW*$imgH] == 0} { setStatus "error" "there is no image to analyze"; return } 
   #set AOI ""
   set AOI [base64::decode [$imgImg data -format raw -grayscale -from $x1 $y1 $x2 $y2]]
-  #set AOI [$imgImg data -format raw -grayscale -from $x1 $y1 $x2 $y2] 
+  #set AOI [$imgImg data -format raw -grayscale -from $x1 $y1 $x2 $y2]
   set headerLength [expr [string length $AOI] - $h_size*$v_size - 1 ]
   if {$DEBUG} {puts stderr "DEBUG: header of $headerLength bytes is:\n[string range $AOI 0 $headerLength]" }
   set AOI [string range $AOI $headerLength end-1]
@@ -1239,7 +1239,10 @@ proc connectGPIB { } {
     after 100; setStatus "" "Ready"
     }\
   else {
-    set gpib_dev [gpib_device "GPIB$gpib_board:$dev_addr" -board $gpib_board -address $dev_addr -trimright \n -readymask 16]
+    if { [catch {set gpib_dev [gpib_device "GPIB$gpib_board:$dev_addr" -board $gpib_board -address $dev_addr -trimright \n -readymask 16]}] } {
+      setStatus "error" "GPIB$gpib_board:$dev_addr not found"
+      return
+      }
     set dev_id [$gpib_dev cmd_read *IDN?]
     if {$DEBUG} {puts stderr "DEBUG: Found $dev_id at $gpib_board:$dev_addr"}
     $gpib_dev remote_enable

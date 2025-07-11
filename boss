@@ -28,7 +28,7 @@ switch -- $argc {
 
 set APPNAME     [lindex [file split [info script]] end]
 set PLATFORM    [lindex [array get tcl_platform os] 1]
-set VERSION     2025.06.26
+set VERSION     2025.07.09
 
 if {$DEBUG} {puts stderr "DEBUG: $APPNAME@$PLATFORM invoked with DEBUG"}
 
@@ -36,7 +36,7 @@ set PWD         [pwd]
 set RCNAME      [file join [cd; pwd] .${APPNAME}rc]
 set MIN_W       1080
 set MIN_H       720
-set TABS        {Settings LiveView Spectrum GPIB}
+set TABS        {Settings Camera Spectrum Calibrate GPIB}
 
 set zoomFactors { 16 8 4 2 1 }
 set imgZoomDefault 4
@@ -456,20 +456,55 @@ proc saveFile { fname } {
       }
     }
   }
+  
+array set FILE_TYPE {
+  raw  {{raw}         {.raw}}
+  txt  {{spectrum}    {.txt}}
+  conf {{config}      {.cfg}}
+  cal  {{calibration} {.cal}}
+  bcm  {{boss macro}  {.bcm}}
+  }
 
-proc LoadFile { type } {
-  global DEBUG imgImg imgData FILE_TYPE RAW_IMG_TYPE WorkDir ROI
-  set filename [tk_getOpenFile -filetypes [list $FILE_TYPE($type) {{All Files} *}] -initialdir $WorkDir ]
-  if { $filename == "" } { setStatus "warning" "Load operation cancelled by user"; return }
+proc loadFile { fname } {
+  global DEBUG WorkDir imgImg imgData RAW_IMG_TYPE  ROI calW ch ncal
+  set filename [string tolower [file rootname $fname]]
+  set ftype [string trimleft [string tolower [file extension $fname]] "."]
+  set file_types {}
+  lappend file_types "\{ $ftype \} \{.$ftype [string toupper .$ftype] \}"
+  lappend file_types { {All Files} * }
+  if {$DEBUG} { puts stderr "DEBUG: filename is \"$filename\" ftype \"$ftype\"\nDEBUG: $file_types" } 
+  if { "$filename" == "" } { 
+    set filename [tk_getOpenFile -filetypes $file_types -initialdir $WorkDir]
+    if { "$filename" == "" } { setStatus "warning" "Load operation cancelled by user"; return }
+    }\
+  else {
+    set filename ${fname}
+    }
+  # could check for existence and query to override here, but use in macros demands we plow ahead
   set ftype [string trimleft [string tolower [file extension $filename]] "."]
   switch $ftype {
     raw -
     png {
       image delete $imgImg
       set imgImg [image create photo -palette 65536]
-      if { [catch [$imgImg read $filename -format $ftype]] } {
-        setStatus "error" "Error opening $ftype image file \"$filename\", check permissions & format"; return }
+      if {[catch {$imgImg read $filename -format $ftype}]} {
+        setStatus "error" "Error opening $ftype image file \"$filename\", check permissions & format"
+        return
+        }
       adjustROI
+      }
+    cal {
+      if {[catch {set fp [open $filename "r"]}]} {
+        setStatus "error" "Error opening $ftype calibration file \"$filename\", check permissions"
+        return
+        }
+      set ncal 0
+      while {[set cw [gets $fp]]!=""} {
+	set c_in [calW search [lindex $cw 1]] 
+	set ch($c_in) [lindex $cw 0]
+	incr ncal
+        }   
+      close $fp
       }
     default {
       setStatus "warning" "File type \"$ftype\" is not yet supported"
@@ -565,8 +600,6 @@ proc connectCamera {} {
   if {$DEBUG} { parray cameraInfo; parray cameraControls }
   return TCL_OK
   }
-
-array set FILE_TYPE { raw {{raw} {.raw}} txt {{spectrum} {.txt}} conf {{config} {.cfg}} }
 
 array set ASI_IMG_TYPE { 0 RAW8 1 RGB24 2 RAW16 3 Y8 }
 array set RAW_IMG_TYPE { 0 {byte} 1 {byte} 2 {short} 3 {byte} }
@@ -835,7 +868,7 @@ proc displayImg {} {
   }
 
 proc displaySpectrum {x1 y1 x2 y2} {
-  global DEBUG ::x ::y imgImg imgW imgH h_size v_size
+  global DEBUG ::x ::y imgImg imgW imgH h_size v_size slope yint
   set h_size [expr $x2 - $x1]
   set v_size [expr $y2 - $y1]
   set imgH [image height $imgImg]
@@ -855,8 +888,10 @@ proc displaySpectrum {x1 y1 x2 y2} {
   chan close $cp
   unset AOI
   newVector ::x $h_size
+  newVector ::x0 $h_size
   newVector ::y $h_size
-  ::x seq 0 $h_size-1
+  ::x0 seq 0 $h_size-1
+  ::x expr { $slope*::x0+$yint }
   set j_max [expr $h_size/2]
   ###set tt [time {
   #the raw format is interlaced, it assumes PixelType=byte, and we use two-byte "short"
@@ -898,7 +933,7 @@ proc powerOff {} {
   }
 
 proc atXhairs { g } {
-  global DEBUG ::x ::y 
+  global DEBUG ::x ::y sx
   if { ![winfo exists $g] } { return }
   set wxy [split [$g crosshairs cget -position] "," ];# window x,y
   set wx [string range [lindex $wxy 0] 1 end]; set wy [lindex $wxy 1]
@@ -978,6 +1013,28 @@ set h_size [expr [lindex $ROI 2] - [lindex $ROI 0]]
 cd "$WorkDir" 
 if {$DEBUG} { puts stderr "DEBUG: in $WorkDir" }
 
+
+set yint  0
+set slope 1.0
+set ncal 0
+#*******************************************************************************
+# Generate a simulated spectrum of plasma lines from a He-Ne laser
+# the data is from https://books.google.ca/books?id=f_sJ8CGfetYC&pg=PA101
+#-------------------------------------------------------------------------------
+vector create calW calA
+calW set { 638.18 640.05 640.87 642.06 644.39 650.60 653.29 \
+  660.02 664.43 665.48 667.05 668.20 672.23 674.38 }
+calA set { 15 19 3 1 4 18 3 19 1 1.5 2 50 28 2 }
+
+
+set w { 632.80 633.99 635.18 638.18 640.05 640.87 642.06 644.39 650.60 653.29 \
+  660.02 664.43 665.48 667.05 668.20 672.23 674.38 676.69 }
+vector create ll al lx ly cx cy
+ll set $w
+al set { 0 0 0 15 19 3 1 4 18 3 19 1 1.5 2 50 28 2 0 }
+
+#*******************************************************************************
+
 ### interface --------------------------------------------------------------------------------
 if {$DEBUG} { puts stderr "DEBUG: configuring GUI" }
 
@@ -1005,8 +1062,8 @@ pack .st -side top -fill x
 pack .ts -expand 1 -fill both
 pack .status -side bottom -fill x
 
-# the first tab is Settings, report/change all control parameters
-#.ts tab select Settings
+# Settings tab, report/change all control parameters
+
 frame .ts.settings
 label .ts.settings.label -text "Control Parameters"
 table .ts.settings 0,0 .ts.settings.label -cspan 2
@@ -1067,6 +1124,7 @@ table configure .ts.settings -propagate true
 
 set fileName ""
 newVector ::x ""
+newVector ::x0 ""
 newVector ::y ""
 newVector ::z ""
 
@@ -1077,8 +1135,8 @@ frame .ts.lv
 frame .ts.lv.tbar -relief raised -borderwidth 1
 menubutton .ts.lv.tbar.file -text "File" -relief raised -menu .ts.lv.tbar.file.m 
 menu .ts.lv.tbar.file.m -tearoff 0
-  .ts.lv.tbar.file.m add command -label "Load img" -command { LoadFile raw }
-  .ts.lv.tbar.file.m add command -label "Save img" -command { saveFile ".raw"}
+  .ts.lv.tbar.file.m add command -label "Load img" -command {loadFile ".raw"}
+  .ts.lv.tbar.file.m add command -label "Save img" -command {saveFile ".raw"}
   .ts.lv.tbar.file.m add separator
   .ts.lv.tbar.file.m add command -label "Save ROI" -command { 
     set x1 [lindex $ROI 0]; set y1 [lindex $ROI 1]
@@ -1142,10 +1200,9 @@ pack .ts.lv.tbar -side top -fill x
 #pack .ts.lv.main.c -side top
 pack .ts.lv.main -side top -expand 1 -fill both
 
-.ts tab configure LiveView -window .ts.lv -expand 1 -fill both
-.ts tab select LiveView
+.ts tab configure Camera -window .ts.lv -expand 1 -fill both
 
-# the third tab is for extracting a spectrum from ROI
+# The Spectrum tab is for extracting a spectrum from ROI
 
 proc adjustROI {} {
   global ROI imgImg h_shift v_shift
@@ -1155,7 +1212,7 @@ proc adjustROI {} {
   set x2 [expr min([lindex $ROI 2],[image width $imgImg])] 
   set y2 [expr min($y1+$v_size,[image height $imgImg])] 
   setStatus "ok" "Set ROI  to \{ $x1 $y1 $x2 $y2 \}"
-  set currentRoi "$x1 $y1 $x2 $y2"
+  set ROI "$x1 $y1 $x2 $y2"
   displaySpectrum $x1 $y1 $x2 $y2
   set h_shift $x1
   set v_shift $y1
@@ -1171,6 +1228,7 @@ label .ts.sp.tbar.lroi -text "  ROI"
 entry .ts.sp.tbar.roi -textvariable ROI -width 20
 bind .ts.sp.tbar.roi <Return> { adjustROI }
 button .ts.sp.tbar.reset -text "\u27F3" -command { adjustROI }
+#button .ts.sp.tbar.cal -text "Calibration" -state normal -command {calibrateXaxis}
 #entry .ts.sp.tbar.y1 -textvariable v_shift -width 5 -validate focus -vcmd  {string is int %P}
 label .ts.sp.tbar.ldy -text "band of "
 entry .ts.sp.tbar.dy -textvariable v_size -width 5 -validate focus -vcmd  {string is int %P}
@@ -1196,15 +1254,191 @@ label .ts.sp.rbar.x -text "----"
 label .ts.sp.rbar.y -text "----"
 pack .ts.sp.rbar -side right -fill y
 pack .ts.sp.rbar.y .ts.sp.rbar.x -side bottom
-pack .ts.sp.rbar.vs -expand 1 -fill both
 bind .ts.sp.rbar.vs <ButtonRelease> { adjustROI }
 pack .ts.sp.g  -expand 1  -fill both
 InitCrosshairs .ts.sp.g
 bind .ts.sp.g <Motion> {atXhairs .ts.sp.g}
+## note inside bind, % has meaning, needs escaping as %%
+bind .ts.sp.g <2> {
+  global sx yint slope ch ncal
+  set ch($ncal) [format "%%.2f" [expr ($sx-$yint)/$slope]]
+  }
 
 .ts tab configure Spectrum -window .ts.sp -anchor nw
 
-# the fourth tab is for GPIB communications with the spectrometer
+frame .ts.cb
+label .ts.cb.title -text "Calibration using He sideband spectrum" -font TkHeadingFont
+table .ts.cb 0,0 .ts.cb.title -cspan 5
+label .ts.cb.n -text "Peak #" 
+label .ts.cb.w -text "\u03BB, nm"
+label .ts.cb.a -text "Strength"
+label .ts.cb.c -text "Pixel #"
+table .ts.cb 1,0 .ts.cb.n -cspan 2 1,2 .ts.cb.w 1,3 .ts.cb.a 1,4 .ts.cb.c
+
+proc fillCalTable {i} {
+  global calW calA ncal ch
+  for {set j 0} {$j<[calW length]} {incr j; incr i} {
+    radiobutton .ts.cb.s$i -variable ncal -value $j
+    label .ts.cb.n$i -text [expr $j+1] -anchor e -width 3
+    label .ts.cb.w$i -text [format "%.2f" $calW($j)] -width 7
+    label .ts.cb.a$i -text [format "%.1f" $calA($j)] -width 6
+    entry .ts.cb.c$i -textvar ch($j) -width 7
+    table .ts.cb $i,0 .ts.cb.n$i $i,1 .ts.cb.s$i $i,2 .ts.cb.w$i $i,3 .ts.cb.a$i $i,4 .ts.cb.c$i
+    }
+  return $i
+  }
+set i [fillCalTable 2]
+
+frame .ts.cb.actions
+button .ts.cb.actions.save  -text "Save .cal" -width 11 -bg LightGreen -command {saveFile ".cal"}
+button .ts.cb.actions.load  -text "Load .cal" -width 11 -bg LightGreen -command {loadFile ".cal"}
+button .ts.cb.actions.sim   -text "Simulate"  -width 11 -bg LightGreen -command {simulateCal}
+button .ts.cb.actions.fit   -text "Fit"       -width 11 -bg LightGreen -command {fitCal}
+button .ts.cb.actions.apply -text "Apply"     -width 11 -bg LightGreen -command {applyCal} -state disabled
+button .ts.cb.actions.undo  -text "Undo"      -width 11 -bg LightGreen -command {undoCal}
+button .ts.cb.actions.clear -text "Clear"     -width 11 -bg LightGreen -command {clearCal}
+table .ts.cb.actions 0,0 .ts.cb.actions.sim  0,1 .ts.cb.actions.fit 0,2 .ts.cb.actions.clear
+table .ts.cb.actions 1,0 .ts.cb.actions.load                        1,2 .ts.cb.actions.apply
+table .ts.cb.actions 2,0 .ts.cb.actions.save                        2,2 .ts.cb.actions.undo
+incr i 
+table .ts.cb $i,0 .ts.cb.actions -cspan 5
+label .ts.cb.info -font TkHeadingFont \
+  -text "Select each He peak, find it in the spectrum,\nthen centre-click its midpoint to record the\npeak's pixel #. Fit needs 3+ points."
+incr i
+table .ts.cb $i,0 .ts.cb.info -cspan 5
+event generate .ts.cb <Configure>
+
+frame .ts.cb.r
+table .ts.cb 0,5 .ts.cb.r -rspan [expr $i+1] -fill y
+pack [graph .ts.cb.r.g -width 720 -bd 2 -relief groove] -fill y -expand 1
+.ts.cb.r.g element create points -pixels 5 -linewidth 0
+.ts.cb.r.g element create line -pixels 1 -linewidth 1 -color green
+.ts.cb.r.g legend configure -hide 1
+.ts.cb.r.g element create peaks
+
+proc clearCal {} {; # erase cal table
+  global calW ncal ch
+  for {set j 0} {$j<[calW length]} {incr j} {set ch($j) ""}
+  set ncal 0
+  .ts.cb.actions.apply configure -state disabled
+  }
+
+proc fitCal {} {; # linear fit for x-axis calibration
+  global DEBUG calW ncal ch slope yint
+  newVector ::cx "" 
+  newVector ::cy ""
+  for {set j 0} {$j<[calW length]} {incr j} {
+    if {$ch($j)!=""} {cx append $ch($j); cy append $calW($j)}
+    }
+  if {[cx length]<2} {
+    setStatus "warning" "Need more than one point to fit a straight line"
+    return
+    }
+  .ts.cb.r.g element configure peaks -hide 1
+  set xm $::cx(mean); set ym $::cy(mean); set xsum 0.0; set ysum 0.0
+  for {set j 0} {$j<[cx length]} {incr j} {
+    set dx [expr {$::cx($j) - $xm}] 
+    set dy [expr {$::cy($j) - $ym}]
+    set xsum [expr {$xsum + $dx * $dy}]
+    set ysum [expr {$ysum + $dx * $dx}]
+    }
+  set slope [expr {$xsum / $ysum}]
+  set yint [expr {$ym - $slope * $xm}]
+  set xf $::cx(max); set yf [expr {$yint + $slope*$xf}]; # slope,yint from linear fit
+  lx set { 0 $xf }; ly set { $yint $yf }
+  .ts.cb.r.g axis configure y -min $::cy(min) -max $::cy(max) -stepsize 5 -subdivisions 5 \
+      -title "wavelength \u03BB, nm"
+  .ts.cb.r.g axis configure x -min $::cx(min) -max $::cx(max) -stepsize 100 -subdivisions 5 \
+      -title "pixel #"
+  .ts.cb.r.g element configure points -xdata ::cx -ydata ::cy -hide 0; # draw points
+  .ts.cb.r.g element configure line -xdata lx -ydata ly -hide 0; # draw line
+  event generate .ts.cb.r.g <Configure>
+  .ts.cb.actions.apply configure -state normal
+  }
+ 
+proc lineFit {} {; # linear regression
+  global slope yint cx cy ch
+  set xm $cx(mean); set ym $cy(mean)
+  set xsum 0.0; set ysum 0.0
+  puts $cx(:) 
+  puts $ch(:)
+  for {set j 0} {$j<[cx length]} {incr j} {
+    set dx [expr {$cx($j) - $xm}] 
+    set dy [expr {$cy($j) - $ym}]
+    set xsum [expr {$xsum + $dx * $dy}]
+    set ysum [expr {$ysum + $dx * $dx}]
+    }
+  puts "slope = $slope, xsum =$xsum, ysum = $ysum"
+  set slope [expr {$xsum / $ysum}]
+  set yint [expr {$ym - $slope * $xm}]
+  }
+  
+proc undoCal {} {; # revert back to pixel #
+  global slope yint ROI
+  set slope 1.0; set yint 0.0
+  ::x0 dup ::x
+  .ts.sp.g axis configure x -title "pixel #"
+  updateXaxis
+  displaySpectrum {*}$ROI
+  }
+  
+proc applyCal {} {
+  global slope yint ROI
+  ::x expr { $slope*::x0+$yint }
+  .ts.sp.g axis configure x -title "wavelength \u03BB, nm"
+  updateXaxis
+  displaySpectrum {*}$ROI
+  }
+  
+proc updateXaxis {} {
+  .ts.sp.g element configure spectrum -xdata ::x 
+  .ts.sp.g axis configure x -min $::x(min) -max $::x(max)
+  .ts.sp.g marker configure bg -coords "$::x(min) $::y(min) $::x(max) $::y(max)"
+  set coords [.ts.sp.g marker cget _top -coords]
+  lset coords 0 $::x(min); lset coords 2 $::x(max)
+  .ts.sp.g marker configure _top -coords $coords
+  set coords [.ts.sp.g marker cget _bot -coords]
+  lset coords 0 $::x(min); lset coords 2 $::x(max)
+  .ts.sp.g marker configure _bot -coords $coords
+  }
+
+proc simulateCal {} {
+  global calW calA
+  set s2 0.2
+  newVector ::He_x ""; ::He_x seq 630 680 0.05
+  newVector ::He_y ""; ::He_y expr { 0.0*::He_x }
+  newVector ::wx ""
+  for {set j 0} {$j<[calW length]} {incr j} {
+    ::wx expr { ($calW($j)- ::He_x)/$s2 }
+    ::He_y expr { ::He_y+$calA($j)/(1+::wx^2) }
+    # add labels above each peak
+    set xl $calW($j)
+    set yl [expr 0.05*$calA(max)+$calA($j)]
+    .ts.cb.r.g marker create text -text [format "%d" [expr $j+1]] -coords { $xl $yl } -fg blue
+    }
+  .ts.cb.r.g element configure points -hide 1
+  .ts.cb.r.g element configure line -hide 1
+  .ts.cb.r.g axis configure x -stepsize 5 -subdivisions 5 -title "\u03BB (nm)" -min $::He_x(min) -max $::He_x(max)
+  set yl [expr 1.1*$calA(max)]
+  .ts.cb.r.g axis configure y -stepsize 10 -subdivisions 2 -title "" -max $yl -min 0
+  set yl [expr $calA(max)]
+  .ts.cb.r.g marker create line -linewidth 3 -outline red -coords { 632.8 0 632.8 $yl }
+  set yl [expr 1.05*$calA(max)]
+  .ts.cb.r.g marker create text -text "632.80" -coords { 632.8 $yl } -fg red
+  .ts.cb.r.g element configure peaks -xdata ::He_x -ydata ::He_y -pixels 1 -color black -hide 0
+  }
+simulateCal
+
+event generate .ts.cb.r.g <Configure>
+
+.ts tab configure Calibrate -window .ts.cb -anchor n
+#.ts tab select Calibrate
+
+#-----------------------------------------------------------------------------
+
+
+
+# GPIB communications with the spectrometer
 
 set append_null 0
 
@@ -1345,6 +1579,8 @@ update
 if {$DEBUG} { puts stderr "DEBUG: first call to C library. If segfault now, reset camera hardware" }
 
 # do these initializations after the widgets are in place
+
+#.ts tab select Camera
 
 findAllCameras
 set nCameras [llength $listOfCameras]

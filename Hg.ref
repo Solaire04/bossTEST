@@ -1,0 +1,17 @@
+ # strong Hg lines in air, from https://physics.nist.gov/PhysRefData/Handbook/Tables/mercurytable2.htm
+# strength/100 wavelength (nm)
+  4    205.2828
+  4    226.2223
+ 10    253.6517
+  4    284.7675#
+  2.5  296.7280
+  6    365.0153
+ 10    398.3931
+  4    404.6563
+  1    434.7494
+ 10    435.8328
+  5    546.0735
+  2    567.7105
+  2.5  614.9475
+  2.5  794.4555
+  2   1013.976

@@ -462,11 +462,12 @@ array set FILE_TYPE {
   txt  {{spectrum}    {.txt}}
   conf {{config}      {.cfg}}
   cal  {{calibration} {.cal}}
+  ref  {{reference}   {.ref}}
   bcm  {{boss macro}  {.bcm}}
   }
 
 proc loadFile { fname } {
-  global DEBUG WorkDir imgImg imgData RAW_IMG_TYPE  ROI calW ch ncal
+  global DEBUG WorkDir imgImg imgData RAW_IMG_TYPE  ROI ch ncal
   set filename [string tolower [file rootname $fname]]
   set ftype [string trimleft [string tolower [file extension $fname]] "."]
   set file_types {}
@@ -500,11 +501,37 @@ proc loadFile { fname } {
         }
       set ncal 0
       while {[set cw [gets $fp]]!=""} {
-	set c_in [calW search [lindex $cw 1]] 
+	set c_in [::calW search [lindex $cw 1]] 
 	set ch($c_in) [lindex $cw 0]
 	incr ncal
         }   
       close $fp
+      }
+   ref {    
+      if {[catch {set fp [open $filename "r"]}]} {
+        setStatus "error" "Error opening $ftype reference file \"$filename\", check permissions"
+        return
+        }
+      #if { ![catch {table info .ts.cb.l .ts.cb.l.info}] } 
+      table forget .ts.cb.l.actions .ts.cb.l.info
+      if {[set nRef [::calW length]]>0} {
+        for {set i 2; set j 0} {$j<$nRef} {incr i; incr j} {
+          table forget .ts.cb.l.n$i .ts.cb.l.s$i .ts.cb.l.w$i .ts.cb.l.a$i .ts.cb.l.c$i
+          destroy .ts.cb.l.n$i .ts.cb.l.s$i .ts.cb.l.w$i .ts.cb.l.a$i .ts.cb.l.c$i
+          }
+        }
+      vector destroy ::calW ::calA
+      vector create  ::calW ::calA
+      while {[set line [gets $fp]]!=""} {
+         set line [string trim $line]
+         set i [string first "#" $line]
+         if {$i>0} {set data [string range $line 0 $i-1]} else {set data $line}
+         if {$i!=0} { 
+           ::calA append [lindex $data 0]
+           ::calW append [lindex $data 1]
+           }
+         }
+       close $fp
       }
     default {
       setStatus "warning" "File type \"$ftype\" is not yet supported"
@@ -1018,21 +1045,12 @@ set yint  0
 set slope 1.0
 set ncal 0
 #*******************************************************************************
-# Generate a simulated spectrum of plasma lines from a He-Ne laser
-# the data is from https://books.google.ca/books?id=f_sJ8CGfetYC&pg=PA101
+# Plasma lines of a He-Ne laser, from https://books.google.ca/books?id=f_sJ8CGfetYC&pg=PA101
 #-------------------------------------------------------------------------------
-vector create calW calA
-calW set { 638.18 640.05 640.87 642.06 644.39 650.60 653.29 \
+vector create ::calW ::calA
+::calW set { 638.18 640.05 640.87 642.06 644.39 650.60 653.29 \
   660.02 664.43 665.48 667.05 668.20 672.23 674.38 }
-calA set { 15 19 3 1 4 18 3 19 1 1.5 2 50 28 2 }
-
-
-set w { 632.80 633.99 635.18 638.18 640.05 640.87 642.06 644.39 650.60 653.29 \
-  660.02 664.43 665.48 667.05 668.20 672.23 674.38 676.69 }
-vector create ll al lx ly cx cy
-ll set $w
-al set { 0 0 0 15 19 3 1 4 18 3 19 1 1.5 2 50 28 2 0 }
-
+::calA set { 15 19 3 1 4 18 3 19 1 1.5 2 50 28 2 }
 #*******************************************************************************
 
 ### interface --------------------------------------------------------------------------------
@@ -1228,13 +1246,13 @@ label .ts.sp.tbar.lroi -text "  ROI"
 entry .ts.sp.tbar.roi -textvariable ROI -width 20
 bind .ts.sp.tbar.roi <Return> { adjustROI }
 button .ts.sp.tbar.reset -text "\u27F3" -command { adjustROI }
-#button .ts.sp.tbar.cal -text "Calibration" -state normal -command {calibrateXaxis}
+button .ts.sp.tbar.cal -text "Calibrate \u259e" -state normal -command {blt::CreateTearoff .ts Calibrate}
 #entry .ts.sp.tbar.y1 -textvariable v_shift -width 5 -validate focus -vcmd  {string is int %P}
 label .ts.sp.tbar.ldy -text "band of "
 entry .ts.sp.tbar.dy -textvariable v_size -width 5 -validate focus -vcmd  {string is int %P}
 #bind .ts.sp.tbar.y1 <Return> { lset ROI 1 $v_shift; lset ROI 3 [expr $v_shift + $v_size]; adjustROI}
 bind .ts.sp.tbar.dy <Return> { lset ROI 3 [expr $v_shift + $v_size]; adjustROI }
-pack .ts.sp.tbar.file .ts.sp.tbar.lroi .ts.sp.tbar.roi .ts.sp.tbar.reset -side left -fill x
+pack .ts.sp.tbar.file .ts.sp.tbar.lroi .ts.sp.tbar.roi .ts.sp.tbar.reset .ts.sp.tbar.cal -side left -fill x
 pack .ts.sp.tbar.dy .ts.sp.tbar.ldy -side right
 pack .ts.sp.tbar -side top -fill x
 
@@ -1254,6 +1272,7 @@ label .ts.sp.rbar.x -text "----"
 label .ts.sp.rbar.y -text "----"
 pack .ts.sp.rbar -side right -fill y
 pack .ts.sp.rbar.y .ts.sp.rbar.x -side bottom
+pack .ts.sp.rbar.vs -expand 1 -fill both
 bind .ts.sp.rbar.vs <ButtonRelease> { adjustROI }
 pack .ts.sp.g  -expand 1  -fill both
 InitCrosshairs .ts.sp.g
@@ -1267,49 +1286,54 @@ bind .ts.sp.g <2> {
 .ts tab configure Spectrum -window .ts.sp -anchor nw
 
 frame .ts.cb
-label .ts.cb.title -text "Calibration using He sideband spectrum" -font TkHeadingFont
-table .ts.cb 0,0 .ts.cb.title -cspan 5
-label .ts.cb.n -text "Peak #" 
-label .ts.cb.w -text "\u03BB, nm"
-label .ts.cb.a -text "Strength"
-label .ts.cb.c -text "Pixel #"
-table .ts.cb 1,0 .ts.cb.n -cspan 2 1,2 .ts.cb.w 1,3 .ts.cb.a 1,4 .ts.cb.c
+frame .ts.cb.l
+label .ts.cb.l.title -text "Calibration using a reference spectrum" -font TkHeadingFont
+label .ts.cb.l.n -text "Peak #" 
+label .ts.cb.l.w -text "\u03BB, nm"
+label .ts.cb.l.a -text "Strength"
+label .ts.cb.l.c -text "Pixel #"
+table .ts.cb.l 0,0 .ts.cb.l.title -cspan 5
+table .ts.cb.l 1,0 .ts.cb.l.n -cspan 2 1,2 .ts.cb.l.w 1,3 .ts.cb.l.a 1,4 .ts.cb.l.c
 
-proc fillCalTable {i} {
-  global calW calA ncal ch
-  for {set j 0} {$j<[calW length]} {incr j; incr i} {
-    radiobutton .ts.cb.s$i -variable ncal -value $j
-    label .ts.cb.n$i -text [expr $j+1] -anchor e -width 3
-    label .ts.cb.w$i -text [format "%.2f" $calW($j)] -width 7
-    label .ts.cb.a$i -text [format "%.1f" $calA($j)] -width 6
-    entry .ts.cb.c$i -textvar ch($j) -width 7
-    table .ts.cb $i,0 .ts.cb.n$i $i,1 .ts.cb.s$i $i,2 .ts.cb.w$i $i,3 .ts.cb.a$i $i,4 .ts.cb.c$i
+frame .ts.cb.l.actions
+button .ts.cb.l.actions.save  -text "Save .cal" -width 11 -bg LightGreen -command {saveFile ".cal"}
+button .ts.cb.l.actions.load  -text "Load .cal" -width 11 -bg LightGreen -command {loadFile ".cal"}
+button .ts.cb.l.actions.sim   -text "Simulate"  -width 11 -bg LightGreen -command {simulateCal}
+button .ts.cb.l.actions.fit   -text "Fit"       -width 11 -bg LightGreen -command {fitCal}
+button .ts.cb.l.actions.apply -text "Apply"     -width 11 -bg LightGreen -command {applyCal} -state disabled
+button .ts.cb.l.actions.undo  -text "Undo"      -width 11 -bg LightGreen -command {undoCal}
+button .ts.cb.l.actions.clear -text "Clear"     -width 11 -bg LightGreen -command {clearCal}
+button .ts.cb.l.actions.ref   -text "Ref"       -width 11 -bg LightGreen -command {clearCal; loadFile ".ref"; fillCalTable}
+
+label .ts.cb.l.info -font TkHeadingFont \
+    -text "Select a peak, find it in the Spectrum window,\nthen centre-click its midpoint to record the\npeak's pixel #. Fit needs 3+ points."
+
+proc fillCalTable {} {
+  global DEBUG ncal ch
+  if {$DEBUG} {puts "DEBUG: reference wavelenghts are: $::calW(:)"}
+  set i 2
+  for {set j 0} {$j<[::calW length]} {incr j; incr i} {
+    radiobutton .ts.cb.l.s$i -variable ncal -value $j
+    label .ts.cb.l.n$i -text [expr $j+1] -anchor e -width 3
+    label .ts.cb.l.w$i -text [format "%.2f" $::calW($j)] -width 7
+    label .ts.cb.l.a$i -text [format "%.1f" $::calA($j)] -width 6
+    entry .ts.cb.l.c$i -textvar ch($j) -width 7
+    table .ts.cb.l $i,0 .ts.cb.l.n$i $i,1 .ts.cb.l.s$i $i,2 .ts.cb.l.w$i $i,3 .ts.cb.l.a$i $i,4 .ts.cb.l.c$i
     }
-  return $i
+  table .ts.cb.l.actions 0,0 .ts.cb.l.actions.sim  0,1 .ts.cb.l.actions.fit 0,2 .ts.cb.l.actions.clear
+  table .ts.cb.l.actions 1,0 .ts.cb.l.actions.load                          1,2 .ts.cb.l.actions.apply
+  table .ts.cb.l.actions 2,0 .ts.cb.l.actions.save 2,1 .ts.cb.l.actions.ref 2,2 .ts.cb.l.actions.undo
+  incr i 
+  table .ts.cb.l $i,0 .ts.cb.l.actions -cspan 5
+  incr i
+  table .ts.cb.l $i,0 .ts.cb.l.info -cspan 5
+  event generate .ts.cb.l <Configure>
   }
-set i [fillCalTable 2]
 
-frame .ts.cb.actions
-button .ts.cb.actions.save  -text "Save .cal" -width 11 -bg LightGreen -command {saveFile ".cal"}
-button .ts.cb.actions.load  -text "Load .cal" -width 11 -bg LightGreen -command {loadFile ".cal"}
-button .ts.cb.actions.sim   -text "Simulate"  -width 11 -bg LightGreen -command {simulateCal}
-button .ts.cb.actions.fit   -text "Fit"       -width 11 -bg LightGreen -command {fitCal}
-button .ts.cb.actions.apply -text "Apply"     -width 11 -bg LightGreen -command {applyCal} -state disabled
-button .ts.cb.actions.undo  -text "Undo"      -width 11 -bg LightGreen -command {undoCal}
-button .ts.cb.actions.clear -text "Clear"     -width 11 -bg LightGreen -command {clearCal}
-table .ts.cb.actions 0,0 .ts.cb.actions.sim  0,1 .ts.cb.actions.fit 0,2 .ts.cb.actions.clear
-table .ts.cb.actions 1,0 .ts.cb.actions.load                        1,2 .ts.cb.actions.apply
-table .ts.cb.actions 2,0 .ts.cb.actions.save                        2,2 .ts.cb.actions.undo
-incr i 
-table .ts.cb $i,0 .ts.cb.actions -cspan 5
-label .ts.cb.info -font TkHeadingFont \
-  -text "Select each He peak, find it in the spectrum,\nthen centre-click its midpoint to record the\npeak's pixel #. Fit needs 3+ points."
-incr i
-table .ts.cb $i,0 .ts.cb.info -cspan 5
-event generate .ts.cb <Configure>
+fillCalTable
 
 frame .ts.cb.r
-table .ts.cb 0,5 .ts.cb.r -rspan [expr $i+1] -fill y
+#table .ts.cb 0,5 .ts.cb.r -rspan [expr $i+1] -fill y
 pack [graph .ts.cb.r.g -width 720 -bd 2 -relief groove] -fill y -expand 1
 .ts.cb.r.g element create points -pixels 5 -linewidth 0
 .ts.cb.r.g element create line -pixels 1 -linewidth 1 -color green
@@ -1317,18 +1341,20 @@ pack [graph .ts.cb.r.g -width 720 -bd 2 -relief groove] -fill y -expand 1
 .ts.cb.r.g element create peaks
 
 proc clearCal {} {; # erase cal table
-  global calW ncal ch
-  for {set j 0} {$j<[calW length]} {incr j} {set ch($j) ""}
+  global ncal ch
+  for {set j 0} {$j<[::calW length]} {incr j} {set ch($j) ""}
   set ncal 0
-  .ts.cb.actions.apply configure -state disabled
+  .ts.cb.l.actions.apply configure -state disabled
   }
 
 proc fitCal {} {; # linear fit for x-axis calibration
-  global DEBUG calW ncal ch slope yint
+  global DEBUG ncal ch slope yint
   newVector ::cx "" 
   newVector ::cy ""
-  for {set j 0} {$j<[calW length]} {incr j} {
-    if {$ch($j)!=""} {cx append $ch($j); cy append $calW($j)}
+  newVector ::lx "" 
+  newVector ::ly ""
+  for {set j 0} {$j<[::calW length]} {incr j} {
+    if {$ch($j)!=""} {cx append $ch($j); cy append $::calW($j)}
     }
   if {[cx length]<2} {
     setStatus "warning" "Need more than one point to fit a straight line"
@@ -1345,34 +1371,15 @@ proc fitCal {} {; # linear fit for x-axis calibration
   set slope [expr {$xsum / $ysum}]
   set yint [expr {$ym - $slope * $xm}]
   set xf $::cx(max); set yf [expr {$yint + $slope*$xf}]; # slope,yint from linear fit
-  lx set { 0 $xf }; ly set { $yint $yf }
-  .ts.cb.r.g axis configure y -min $::cy(min) -max $::cy(max) -stepsize 5 -subdivisions 5 \
-      -title "wavelength \u03BB, nm"
-  .ts.cb.r.g axis configure x -min $::cx(min) -max $::cx(max) -stepsize 100 -subdivisions 5 \
-      -title "pixel #"
+  ::lx set { 0 $xf }; ::ly set { $yint $yf }
+  .ts.cb.r.g axis configure y -min $::cy(min) -max $::cy(max) -title "wavelength \u03BB, nm"
+  .ts.cb.r.g axis configure x -min $::cx(min) -max $::cx(max) -title "pixel #"
   .ts.cb.r.g element configure points -xdata ::cx -ydata ::cy -hide 0; # draw points
-  .ts.cb.r.g element configure line -xdata lx -ydata ly -hide 0; # draw line
+  .ts.cb.r.g element configure line -xdata ::lx -ydata ::ly -hide 0; # draw line
   event generate .ts.cb.r.g <Configure>
-  .ts.cb.actions.apply configure -state normal
+  .ts.cb.l.actions.apply configure -state normal
   }
  
-proc lineFit {} {; # linear regression
-  global slope yint cx cy ch
-  set xm $cx(mean); set ym $cy(mean)
-  set xsum 0.0; set ysum 0.0
-  puts $cx(:) 
-  puts $ch(:)
-  for {set j 0} {$j<[cx length]} {incr j} {
-    set dx [expr {$cx($j) - $xm}] 
-    set dy [expr {$cy($j) - $ym}]
-    set xsum [expr {$xsum + $dx * $dy}]
-    set ysum [expr {$ysum + $dx * $dx}]
-    }
-  puts "slope = $slope, xsum =$xsum, ysum = $ysum"
-  set slope [expr {$xsum / $ysum}]
-  set yint [expr {$ym - $slope * $xm}]
-  }
-  
 proc undoCal {} {; # revert back to pixel #
   global slope yint ROI
   set slope 1.0; set yint 0.0
@@ -1403,36 +1410,43 @@ proc updateXaxis {} {
   }
 
 proc simulateCal {} {
-  global calW calA
-  set s2 0.2
-  newVector ::He_x ""; ::He_x seq 630 680 0.05
+  global DEBUG
+  set x_min [expr 10*int($::calW(min)/10)]
+  set x_max [expr 10*int($::calW(max)/10+1)]
+  newVector ::He_x ""; ::He_x seq $x_min $x_max [expr ($x_max - $x_min)/1500.]
+  set s2 [expr ($x_max - $x_min)/500.]
   newVector ::He_y ""; ::He_y expr { 0.0*::He_x }
   newVector ::wx ""
-  for {set j 0} {$j<[calW length]} {incr j} {
-    ::wx expr { ($calW($j)- ::He_x)/$s2 }
-    ::He_y expr { ::He_y+$calA($j)/(1+::wx^2) }
+  foreach m [.ts.cb.r.g marker names] {.ts.cb.r.g marker delete $m}
+  for {set j 0} {$j<[::calW length]} {incr j} {
+    ::wx expr { ($::calW($j)- ::He_x)/$s2 }
+    ::He_y expr { ::He_y+$::calA($j)/(1+::wx^2) }
     # add labels above each peak
-    set xl $calW($j)
-    set yl [expr 0.05*$calA(max)+$calA($j)]
+    set xl $::calW($j)
+    set yl [expr 0.05*$::calA(max)+$::calA($j)]
     .ts.cb.r.g marker create text -text [format "%d" [expr $j+1]] -coords { $xl $yl } -fg blue
     }
   .ts.cb.r.g element configure points -hide 1
   .ts.cb.r.g element configure line -hide 1
-  .ts.cb.r.g axis configure x -stepsize 5 -subdivisions 5 -title "\u03BB (nm)" -min $::He_x(min) -max $::He_x(max)
-  set yl [expr 1.1*$calA(max)]
-  .ts.cb.r.g axis configure y -stepsize 10 -subdivisions 2 -title "" -max $yl -min 0
-  set yl [expr $calA(max)]
+  .ts.cb.r.g axis configure x -title "\u03BB (nm)" -min $x_min -max $x_max
+  set yl [expr 1.1*$::calA(max)]
+  .ts.cb.r.g axis configure y -title "" -max $yl -min 0
+  set yl [expr $::calA(max)]
   .ts.cb.r.g marker create line -linewidth 3 -outline red -coords { 632.8 0 632.8 $yl }
-  set yl [expr 1.05*$calA(max)]
+  .ts.cb.r.g marker create line -linewidth 3 -outline green -coords { 532. 0 532. $yl }
+  set yl [expr 1.05*$::calA(max)]
   .ts.cb.r.g marker create text -text "632.80" -coords { 632.8 $yl } -fg red
+  .ts.cb.r.g marker create text -text "532.0" -coords { 532. $yl } -fg green
   .ts.cb.r.g element configure peaks -xdata ::He_x -ydata ::He_y -pixels 1 -color black -hide 0
   }
 simulateCal
 
 event generate .ts.cb.r.g <Configure>
 
+pack .ts.cb.l .ts.cb.r -side left -fill y -expand 1
+
 .ts tab configure Calibrate -window .ts.cb -anchor n
-#.ts tab select Calibrate
+.ts tab select Calibrate
 
 #-----------------------------------------------------------------------------
 

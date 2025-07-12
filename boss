@@ -402,7 +402,7 @@ proc SaveROI {x1 y1 x2 y2 fname} {
   }
     
 proc saveFile { fname } {
-  global DEBUG ::x ::y WorkDir cameraInfo expTime expUnit imgImg ROI
+  global DEBUG ::x ::y WorkDir cameraInfo expTime expUnit imgImg ROI ch
   set filename [string tolower [file rootname $fname]]
   set ftype [string trimleft [string tolower [file extension $fname]] "."]
   set file_types {}
@@ -451,6 +451,11 @@ proc saveFile { fname } {
       puts -nonewline $fp [.ts.settings.macro.script get 0.0 end]
       close $fp
       setStatus "ok" "Saved command macro to $filename"
+      }
+    cal {
+      for {set j 0} {$j < [::calW length]} {incr j} { if {"$ch($j)"!=""} {puts $fp "$ch($j)\t$::calW($j)"} }
+      close $fp
+      setStatus "ok" "Saved calibration to $filename"
       }
     default {
       close $fp

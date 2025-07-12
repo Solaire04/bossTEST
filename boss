@@ -1,6 +1,6 @@
 #!/bin/bash
 # the next line restarts using wish\
-LD_LIBRARY_PATH="/opt/ASI_linux_mac_SDK_V1.38/lib/x64:$LD_LIBRARY_PATH" exec wish "$0" "$@"
+LD_LIBRARY_PATH="/opt/ASI_linux_mac_SDK_V1.38/lib/x64:$LD_LIBRARY_PATH"; C_INCLUDE_PATH="/opt/ASI_linux_mac_SDK_V1.38/include:$C_INCLUDE_PATH" exec wish "$0" "$@"
 
 ### if the ASI libraries are installed in the search path, this is all that is needed
 ###exec wish "$0" "$@"
@@ -15,8 +15,13 @@ LD_LIBRARY_PATH="/opt/ASI_linux_mac_SDK_V1.38/lib/x64:$LD_LIBRARY_PATH" exec wis
 ### ZWO installation provides several udev rules, e.g. /etc/udev/rules.d/99-zwo.rules as distributed
 ###
 ### Written by edward.sternin@brocku.ca
-### 2025.06: initial release, tk8.6 Ubuntu 24.04LTS, for ASI294MM and ASI2600MM (mono) cameras
+### 2025.06:    initial release, tk8.6 Ubuntu 24.04LTS, for ASI294MM and ASI2600MM (mono) cameras
+### 2025.06.29: GPIB generic interface, macro execution, tooltips
+### 2025.07.12: spectral calibration, loadable reference data
 ###
+set APPNAME     [lindex [file split [info script]] end]
+set PLATFORM    [lindex [array get tcl_platform os] 1]
+set VERSION     2025.07.12
 
 ### at runtime, can set the DEBUG flag, if passed as the first parameter
 set DEBUG 0
@@ -26,9 +31,6 @@ switch -- $argc {
   default { puts stderr "$APPNAME invoked with too many arguments ($argc), abort."; exit}
   }
 
-set APPNAME     [lindex [file split [info script]] end]
-set PLATFORM    [lindex [array get tcl_platform os] 1]
-set VERSION     2025.07.09
 
 if {$DEBUG} {puts stderr "DEBUG: $APPNAME@$PLATFORM invoked with DEBUG"}
 
@@ -134,9 +136,9 @@ image create photo button_detach -data {
 
 if {$DEBUG} { puts stderr "DEBUG: [package ifneeded critcl [package present critcl]]" }
 
-### hardware access API through the manufacturer's C library; this may need to be added to LD_LIBRARY_PATH at run-time
-critcl::cheaders -I/opt/ASI_linux_mac_SDK_V1.38/include
-critcl::clibraries -L/opt/ASI_linux_mac_SDK_V1.38/lib/x64
+### hardware access API through the manufacturer's C library; added to LD_LIBRARY_PATH at run-time
+#critcl::cheaders -I/opt/ASI_linux_mac_SDK_V1.38/include
+#critcl::clibraries -L/opt/ASI_linux_mac_SDK_V1.38/lib/x64
 critcl::clibraries -lASICamera2
 
 critcl::ccode {
@@ -1306,7 +1308,7 @@ button .ts.cb.l.actions.clear -text "Clear"     -width 11 -bg LightGreen -comman
 button .ts.cb.l.actions.ref   -text "Ref"       -width 11 -bg LightGreen -command {clearCal; loadFile ".ref"; fillCalTable}
 
 label .ts.cb.l.info -font TkHeadingFont \
-    -text "Select a peak, find it in the Spectrum window,\nthen centre-click its midpoint to record the\npeak's pixel #. Fit needs 3+ points."
+    -text "Select a peak, find it in the Spectrum tab,\nthen centre-click its midpoint to record the\npeak's pixel #. Fit needs 3+ points."
 
 proc fillCalTable {} {
   global DEBUG ncal ch
@@ -1446,11 +1448,8 @@ event generate .ts.cb.r.g <Configure>
 pack .ts.cb.l .ts.cb.r -side left -fill y -expand 1
 
 .ts tab configure Calibrate -window .ts.cb -anchor n
-.ts tab select Calibrate
 
 #-----------------------------------------------------------------------------
-
-
 
 # GPIB communications with the spectrometer
 
@@ -1577,10 +1576,22 @@ tooltip::tooltip .ts.lv.tbar.etime "Exposure time\nHit <Enter> in the widget to 
 tooltip::tooltip .ts.lv.tbar.zoom "The zoom settings affects display only,\nfull-resolution image remains in memory"
 tooltip::tooltip .ts.sp.tbar.roi "Region Of Interest\nHit <Enter> in the widget to recalculate the spectrum from ROI"
 tooltip::tooltip .ts.sp.tbar.reset "Recalculate the spectrum from ROI"
+tooltip::tooltip .ts.sp.tbar.cal "Tearoff the Calibrate tab into a separate window from this Spectrum tab"
 tooltip::tooltip .ts.sp.tbar.dy "Size of the band of interest, in pixels\nHit <Enter> in the widget to recalculate ROI & the spectrum"
 tooltip::tooltip .ts.sp.rbar.vs "Start of the band of interest, in pixels\nHit <Enter> in the widget to recalculate ROI & the spectrum"
 tooltip::tooltip .ts.sp.rbar.x "x-coordinate of the cursor, in pixels"
 tooltip::tooltip .ts.sp.rbar.y "y-coordinate of the cursor, in spectral intensity"
+tooltip::tooltip .ts.cb.l.actions.sim "Simulate a spectrum using current reference wavelengths and strengths"
+tooltip::tooltip .ts.cb.l.actions.fit "Fit a straight line to wavelength vs pixel to establish calibration"
+tooltip::tooltip .ts.cb.l.actions.apply "Fit first, then apply that calibration to the Spectrum tab"
+tooltip::tooltip .ts.cb.l.actions.clear "Clear all pixel entries; changing mirror/grating requires recalibration"
+tooltip::tooltip .ts.cb.l.actions.load "Load previously saved wavelength/pixel pairs from a .cal file"
+tooltip::tooltip .ts.cb.l.actions.save "Save the current set of wavelength/pixel pairs in a .cal file"
+tooltip::tooltip .ts.cb.l.actions.undo "Revert to using camera's pixel index on the x-axis"
+tooltip::tooltip .ts.cb.l.actions.ref "Load a different set of reference wavelengths and strengths. Defaults to He-Ne plasma"
+tooltip::tooltip .ts.gpib.tbar.port "GPIB \"card\" or \"interface\" address, there could be several"
+tooltip::tooltip .ts.gpib.tbar.addr "GPIB \"device\" address on the interface"
+tooltip::tooltip .ts.gpib.tbar.null "Some GPIB devices may require a NULL terminator instead of EOL"
 tooltip::tooltip .ts.gpib.tx.tab "Hit <Enter> in the widget to send the command"
 tooltip::tooltip .ts.gpib.rx.tab "Response from the GPIB device, if any"
 tooltip::tooltip .ts.gpib.td.newcmd "Declare a new GPIB command alias"
@@ -1589,12 +1600,11 @@ tooltip::tooltip .ts.gpib.td.str_newcmd "Hit <Enter> in the widget to add\nthe n
 ### tcl main code ----------------------------------------------------------------------------
 
 update
-
 if {$DEBUG} { puts stderr "DEBUG: first call to C library. If segfault now, reset camera hardware" }
 
 # do these initializations after the widgets are in place
 
-#.ts tab select Camera
+.ts tab select Camera
 
 findAllCameras
 set nCameras [llength $listOfCameras]

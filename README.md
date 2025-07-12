@@ -1,5 +1,7 @@
 # <img src="https://github.com/esternin/boss/blob/main/logo.png" alt="[boss logo]" width="64" height="64"> Brock Optical Spectroscopy Software 
 
+<img src="https://github.com/esternin/boss/blob/main/Screenshot-01.png" alt="[boss screenshot]" width="100%">
+
 A typical optical spectrometer consists of both mechanical and optical parts that are quite robust.  It is not unusual to find multi-decade-old spectrometers still in daily use. The one component that ages and usually causes the spectrometer to be replaced is the detector, as the light sensor technology has been developing at great speed ever since the high-resolution digital cameras came into being in the 1990s, and it shows no sign of slowing down.
 
 This project is dedicated to creating a reasonably universal software that allows one to upgrade the older spectrometer by mating it with a new high-resolution digital detector. Not a "webcam"-level detector (for those simple spectrometers a basic web-cam spectroscopy interface is available at https://www.physics.brocku.ca/Labs/WebCamSpectroscopy/, but one of high-end astrophotography cameras which offer high quantum efficiency of their sensors and typically have built-in Peltier cooling of the sensor backing, to reduce the dark currents and their associated image noise.

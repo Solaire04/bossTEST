@@ -22,7 +22,9 @@ sudo ./install.sh
 ```
 and be sure to download and untar into `/opt/ASI_linux_mac_SDK_V1.38` (or similar, but then adjust the pointers in the first line of the main file) the libraries provided by ZWO.
 
-In simple spectrometers the slit sizes and grating angles are controlled by hand. More sophisticated devices may have GPIB or serial-line controls. Since the protocols vary, each spectrometer may need to be treated differently.  For GPIB-controlled devices, **linux-gpib** (https://github.com/coolshou/linux-gpib or https://gpib-tcl.sourceforge.net/GPIB-Tcl.html) is used to provide the kernel modules (it is rumoured to be included in the mainline Linux kernel soon) and **tcl-gpib** (https://github.com/slazav/tcl-gpib) which provides a tcl/tk interface to that library. These must also be installed. This is what I did, YMMV:
+In simple spectrometers the slit sizes and grating angles are controlled by hand. More sophisticated devices may have GPIB or serial-line controls. Since the protocols vary, each spectrometer may need to be treated differently.  For GPIB-controlled devices, **linux-gpib** (https://github.com/coolshou/linux-gpib or https://gpib-tcl.sourceforge.net/GPIB-Tcl.html) is used to provide the kernel modules (it is rumoured to be included in the mainline Linux kernel soon) and **tcl-gpib** (https://github.com/slazav/tcl-gpib) which provides a tcl/tk interface to that library. These must also be installed. Below is the log of what I did, YMMV.
+
+If GPIB is not required, use a `NOGPIB` flag at run-time, as in `boss NOGPIB` which will hide the GPIB tab from view.  The GPIB controls will no longer be visible, and if you then execute a macro containing GPIB commands, errors will show up. 
 ```
 sudo apt-get install dwarves
 cp /sys/kernel/btf/vmlinux /usr/lib/modules/`uname -r`/build/
@@ -66,13 +68,25 @@ sudo cp -r * /usr/share/usb
 cd ..
 rm -rf gpib_firmware-2008-08-10
 ```
-If this is too much for you, raise an issue, and I will add a `NOGPIB` flag at run-time.  We are still working on integrating our GPIB command set, so many changes are likely to come to the GPIB section.
-
-Running from a terminal, you may simply type `boss` (or `/usr/local/bin/boss`). If things do not work, try getting some additional insight by using the `DEBUG` run-time flag:
+Running from a terminal, you may simply type `boss` (`install.sh` places it in `/usr/local/bin/boss`). If things do not work, try getting some additional insight by using the `DEBUG` run-time flag:
 ```
 boss DEBUG
 ```
-Explore the nifty macro facility that allows you to call any of the tcl subroutines, so an automated multi-file data acquisition is possible. We use it to divide long data acquisition runs into several pieces, for safety, and to help identifying cosmic rays' artifacts.
+Explore the nifty macro facility that allows you to call any of the tcl subroutines, so an automated multi-file data acquisition is possible. We use it to divide long data acquisition runs into several pieces, for safety, and to help identifying cosmic rays' artifacts:
+```
+set expTime 1000
+set expUnit s
+getSnapshot
+saveFile 01.raw
+set ROI "0 1800 4144 1850"
+adjustROI
+saveFile 01.dat
+getSnapshot
+saveFile 02.raw
+adjustROI
+saveFile 02.dat
+(etc)
+```
 
 A note of caution: use high-quality USB3 cables and adequate power supplies. A poor cable may work for a camera, and fail in unexpected ways for a more demanding one. If you are experiencing failed exposures, the first thing to do is to try a better USB cable.
 

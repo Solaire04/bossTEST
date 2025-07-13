@@ -23,14 +23,13 @@ set APPNAME     [lindex [file split [info script]] end]
 set PLATFORM    [lindex [array get tcl_platform os] 1]
 set VERSION     2025.07.12
 
-### at runtime, can set the DEBUG flag, if passed as the first parameter
+### at runtime, can set these flags, if passed as run-time parameters
 set DEBUG 0
-switch -- $argc {
-  0 { }
-  1 { if {[lindex $argv 0]=="DEBUG"} { set DEBUG 1 } }
-  default { puts stderr "$APPNAME invoked with too many arguments ($argc), abort."; exit}
+set NOGPIB 0
+foreach arg $argv {
+  if {"$arg"=="DEBUG"}  { set DEBUG 1 }
+  if {"$arg"=="NOGPIB"} { set NOGPIB 1 }
   }
-
 
 if {$DEBUG} {puts stderr "DEBUG: $APPNAME@$PLATFORM invoked with DEBUG"}
 
@@ -98,11 +97,13 @@ if { [catch {set BLTversion [package require BLT]}] } {
   }
 namespace import ::blt::*
 proc InitCrosshairs {g} {Blt_Crosshairs $g; Blt_ZoomStack $g}
-if { [catch {package require GpibLib}] } {
-  puts stderr "GpibLib package is missing, download from https://github.com/slazav/tcl-gpib"
-  exit 1
+if {$NOGPIB} {
+  if {$DEBUG} {puts "DEBUG: NOGPIB requested, disabling all GPIB funcions"}
+  if { [catch {package require GpibLib}] } {
+    puts stderr "GpibLib package is missing, download from https://github.com/slazav/tcl-gpib"
+    exit 1
+    }
   }
-
 ### include the base64-encoded images for buttons ----------------------
 
 image create photo button_open -data {
@@ -1564,6 +1565,7 @@ pack .ts.gpib.rx -fill x; pack .ts.gpib.rx.tab -anchor w -fill x
 pack .ts.gpib.td -side top -fill x -expand 1
 
 .ts tab configure GPIB -window .ts.gpib -anchor n -fill x
+if {$NOGPIB} {.ts tab configure GPIB -hidden 1}
 
 ### pop-up help ----------------------------------------------------------------------------
 

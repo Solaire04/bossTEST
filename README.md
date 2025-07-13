@@ -1,4 +1,4 @@
-# <img src="https://github.com/esternin/boss/blob/main/logo.png" alt="[boss logo]" width="64" height="64"> Brock Optical Spectroscopy Software 
+# <img src="https://github.com/esternin/boss/blob/main/boss.svg" alt="[boss logo]" width="64" height="64"> Brock Optical Spectroscopy Software 
 
 <img src="https://github.com/esternin/boss/blob/main/Screenshot-01.png" alt="[boss screenshot]" width="100%">
 

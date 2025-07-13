@@ -6,13 +6,10 @@ A typical optical spectrometer consists of both mechanical and optical parts tha
 
 This project is dedicated to creating a reasonably universal software that allows one to upgrade the older spectrometer by mating it with a new high-resolution digital detector. Not a "webcam"-level detector (for those simple spectrometers a basic web-cam spectroscopy interface is available at https://www.physics.brocku.ca/Labs/WebCamSpectroscopy/, but one of high-end astrophotography cameras which offer high quantum efficiency of their sensors and typically have built-in Peltier cooling of the sensor backing, to reduce the dark currents and their associated image noise.
 
-This software is being tested on two such cameras from ZWO (https://zwoastro.com):
-  - ZWO ASI294MM Pro, and
-  - ZWO ASI2600MM Pro
+<details>
+  <summary><b>Installing boss and prerequisites</b></summary>
 
-The Pro designation indicates built-in active cooling, and MM type employs monochrome sensors of the highest sensitivity and dynamic range (the corresponding type MC cameras are the colour versions of the same, and typically have lower dynamic range but three colour channels).
-
-**boss** software is written in tcl/tk which makes it platform independent, but it only gets tested under Linux (xubuntu/Debian are the primary distributions in use in the <a href="https://brocku.ca/physics" target="_blank">Department of Physics at Brock University</a>. For fast i/o and large image processing, critical parts are written in C using **critcl** (https://andreas-kupries.github.io/critcl/), and a pre-compiled low-level C library provided by the manufacturer ZWO (https://www.zwoastro.com/software/).
+**boss** software is written in tcl/tk which makes it platform independent, but it only gets tested under Linux. Xubuntu or Debian+XFCE are the primary distributions in use at the <a href="https://brocku.ca/physics" target="_blank">Department of Physics at Brock University</a>. For fast i/o and large image processing, critical parts are written in C using **critcl** (https://andreas-kupries.github.io/critcl/), and a pre-compiled low-level C library provided by the manufacturer ZWO (https://www.zwoastro.com/software/).
 
 To install boss with its prerequisite pieces on a typical (x)ubuntu/debian installation, try:
 ```
@@ -21,6 +18,10 @@ sudo install -m 644 99-zwo.rules /etc/udev/rules.d
 sudo ./install.sh
 ```
 and be sure to download and untar into `/opt/ASI_linux_mac_SDK_V1.38` (or similar, but then adjust the pointers in the first line of the main file) the libraries provided by ZWO.
+</details>
+
+<details>
+  <summary><b>Handling GPIB instruments</b></summary>
 
 In simple spectrometers the slit sizes and grating angles are controlled by hand. More sophisticated devices may have GPIB or serial-line controls. Since the protocols vary, each spectrometer may need to be treated differently.  For GPIB-controlled devices, **linux-gpib** (https://github.com/coolshou/linux-gpib or https://gpib-tcl.sourceforge.net/GPIB-Tcl.html) is used to provide the kernel modules (it is rumoured to be included in the mainline Linux kernel soon) and **tcl-gpib** (https://github.com/slazav/tcl-gpib) which provides a tcl/tk interface to that library. These must also be installed. Below is the log of what I did, YMMV.
 
@@ -67,11 +68,23 @@ cd gpib_firmware-2008-08-10/
 sudo cp -r * /usr/share/usb
 cd ..
 rm -rf gpib_firmware-2008-08-10
-```
+```  
+</details>
+
+<details>
+  <summary><b>Running boss</b></summary>
+
+`install.sh` places the appropriate launcher and icon files where your window manager looks for such files, so you should be able to find <b>boss</b> in the applications' menus right away, no need to reboot or restart anything.
+
 Running from a terminal, you may simply type `boss` (`install.sh` places it in `/usr/local/bin/boss`). If things do not work, try getting some additional insight by using the `DEBUG` run-time flag:
 ```
 boss DEBUG
 ```
+</details>
+
+<details>
+  <summary><b>boss command macros</b></summary>
+
 Explore the nifty macro facility that allows you to call any of the tcl subroutines, so an automated multi-file data acquisition is possible. We use it to divide long data acquisition runs into several pieces, for safety, and to help identifying cosmic rays' artifacts:
 ```
 set expTime 1000
@@ -87,7 +100,16 @@ adjustROI
 saveFile 02.dat
 (etc)
 ```
+</details>
 
-A note of caution: use high-quality USB3 cables and adequate power supplies. A poor cable may work for a camera, and fail in unexpected ways for a more demanding one. If you are experiencing failed exposures, the first thing to do is to try a better USB cable.
+<details>
+  <summary><b>Hardware requirements</b></summary>
+  
+This software is being tested on two astrophotography cameras from ZWO (https://zwoastro.com):
+  - ZWO ASI294MM Pro, and
+  - ZWO ASI2600MM Pro
 
+The Pro designation indicates built-in active cooling, and MM type employs monochrome sensors of the highest sensitivity and dynamic range (the corresponding type MC cameras are the colour versions of the same, and typically have lower dynamic range but three colour channels).
 
+A note of caution: use high-quality USB3 cables and adequate power supplies. A poor cable may work for one camera, and fail in unexpected ways for a more demanding one. If you are experiencing failed exposures, the first thing to do is to try a better USB cable.
+</details>

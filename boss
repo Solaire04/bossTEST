@@ -48,7 +48,6 @@ set DEFAULTS    {
   targetTemp    {v 5		h "sensor cooling target, down to 35\u00B0C below ambient" }
   expTime	{v 100 		h "exposure time" }
   expUnit	{v "ms"		h "time units" }
-  imgZoom	{v 4		h "camera image zoom factor" }
   macroFile	{v ""		h "file(.bcm) with BOSS Command Macro script" }
   ROI		{v "0 1200 2821 1250" h "Region Of Interest, in pixels" }
   gpibCommands	{v "id *IDN? reset *RST triac O2000] volt \{MEAS:VOLT:DC? DEF,DEF\}" h "Known GPIB commands" }
@@ -335,7 +334,7 @@ proc SaveSettings { interactive fname } {
   }
 
 proc LoadSettings { interactive fname } {
-  global DEBUG settings WorkDir imgZoom targetTemp expTime expUnit
+  global DEBUG settings WorkDir targetTemp expTime expUnit
   if ($interactive) {
     set filename [tk_getOpenFile -filetypes { {{Config files} {.cfg .CFG}} {{All Files} *} } -initialfile $fname -initialdir $WorkDir]
     if { $filename == "" } { setStatus "warning" "Load operation cancelled by user"; return }
@@ -1096,6 +1095,7 @@ table .ts.settings 0,0 .ts.settings.label -cspan 2
 set i 1
 foreach paramName [dict keys $settings] {
   global $paramName ${paramName}_h
+  if {"$paramName"=="wmG"} {continue}; # skip over the wm geometry, keep it internal
   label .ts.settings.l_${paramName} -text "$paramName"
   entry .ts.settings.v_${paramName} -textvariable $paramName
   label .ts.settings.h_${paramName} -text [set [set paramName]_h]

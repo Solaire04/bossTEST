@@ -141,12 +141,17 @@ image create photo button_detach -data {
 if {$DEBUG} { puts stderr "DEBUG: [package ifneeded critcl [package present critcl]]" }
 
 ### hardware access API through the manufacturer's C library; added to LD_LIBRARY_PATH at run-time
-#critcl::cheaders -I/opt/ASI_linux_mac_SDK_V1.38/include
-#critcl::clibraries -L/opt/ASI_linux_mac_SDK_V1.38/lib/x64
+set LD_LIBRARY_PATH [string trimright $::env(LD_LIBRARY_PATH) ":"]
+set C_INCLUDE_PATH  [string trimright $::env(C_INCLUDE_PATH) ":"]
+if {$DEBUG} {puts stderr "DEBUG: -L$LD_LIBRARY_PATH -I$C_INCLUDE_PATH"}
+
+critcl::cheaders -I$C_INCLUDE_PATH
+critcl::clibraries -L$LD_LIBRARY_PATH
 critcl::clibraries -lASICamera2
 
 critcl::ccode {
   #include <string.h>
+  #include <stdlib.h>
   #include <stdbool.h>
   #include <tcl.h>
   #include "ASICamera2.h"
@@ -180,26 +185,31 @@ critcl::cproc ASIGetCameraMode {int i} int {
 critcl::cproc ASIGetCameraInfo {int i} object0 {
   ASI_CAMERA_INFO cameraInfo;
   ASIGetCameraProperty(&cameraInfo,i);
-  char str[256], vformats[64] = "", bins[64] = "", dum[64];
-  int j;
+  char str[256], *vformats, *bins, dum[64];
+  int j, n=0;
+  asprintf(&vformats,"");
   for (j=0; j<8; j++) {
     if (cameraInfo.SupportedVideoFormat[j] == ASI_IMG_END ) { break; };
     strncpy(dum, vformats, 64);
-    sprintf(vformats,"%s %d",dum,cameraInfo.SupportedVideoFormat[j]);
+    n = asprintf(&vformats,"%s %d",dum,cameraInfo.SupportedVideoFormat[j]);
+    if (n < 0) { fprintf(stderr,"ERROR: in asprintf allocation\n");}
     }
+  asprintf(&bins,"");
   for (j=0; j<16; j++) {
     if (cameraInfo.SupportedBins[j] == 0 ) { break; };
     strncpy(dum, bins, 64);
-    sprintf(bins,"%s %d",dum,cameraInfo.SupportedBins[j]);
+    n = asprintf(&bins,"%s %d",dum,cameraInfo.SupportedBins[j]);
+    if (n < 0) { fprintf(stderr,"ERROR: in asprintf allocation\n");}
     }
-  sprintf(str,"id %d name {%s} width %ld height %ld bitdepth %ld pixelsize %.3fnm colour %s cooler %s shutter %s usb3 %s vformats { %s } bins { %s }", 
+  sprintf(str,"id %d name {%s} width %ld height %ld bitdepth %d pixelsize %.3fnm colour %s cooler %s shutter %s usb3 %s vformats { %s } bins { %s }", 
     cameraInfo.CameraID, cameraInfo.Name, 
     cameraInfo.MaxWidth, cameraInfo.MaxHeight, 
-    cameraInfo.PixelSize, cameraInfo.BitDepth,
+    cameraInfo.BitDepth, cameraInfo.PixelSize, 
     YN[cameraInfo.IsColorCam], YN[cameraInfo.IsCoolerCam],
     YN[cameraInfo.MechanicalShutter], YN[cameraInfo.IsUSB3Camera], vformats, bins
     );
   Tcl_Obj* ret = Tcl_NewStringObj (str, -1);
+  free(vformats); free(bins);
   return ret;
   }
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 # the next line restarts using wish\
-LD_LIBRARY_PATH="/opt/ASI_linux_mac_SDK_V1.38/lib/x64:$LD_LIBRARY_PATH"; C_INCLUDE_PATH="/opt/ASI_linux_mac_SDK_V1.38/include:$C_INCLUDE_PATH" exec wish "$0" "$@"
+LD_LIBRARY_PATH="/opt/ASI_linux_mac_SDK_V1.38/lib/x64:$LD_LIBRARY_PATH" C_INCLUDE_PATH="/opt/ASI_linux_mac_SDK_V1.38/include:$C_INCLUDE_PATH" exec wish "$0" "$@"
 
 ### if the ASI libraries are installed in the search path, this is all that is needed
 ###exec wish "$0" "$@"
@@ -21,7 +21,7 @@ LD_LIBRARY_PATH="/opt/ASI_linux_mac_SDK_V1.38/lib/x64:$LD_LIBRARY_PATH"; C_INCLU
 ###
 set APPNAME     [lindex [file split [info script]] end]
 set PLATFORM    [lindex [array get tcl_platform os] 1]
-set VERSION     2025.07.12
+set VERSION     2025.07.16
 
 ### at runtime, can set these flags, if passed as run-time parameters
 set DEBUG 0
@@ -96,13 +96,17 @@ if { [catch {set BLTversion [package require BLT]}] } {
   }
 namespace import ::blt::*
 proc InitCrosshairs {g} {Blt_Crosshairs $g; Blt_ZoomStack $g}
+
 if {$NOGPIB} {
-  if {$DEBUG} {puts "DEBUG: NOGPIB requested, disabling all GPIB funcions"}
+  if {$DEBUG} { puts stderr "DEBUG: NOGPIB requested, disabling all GPIB funcions" }
+  }\
+else {
   if { [catch {package require GpibLib}] } {
     puts stderr "GpibLib package is missing, download from https://github.com/slazav/tcl-gpib"
     exit 1
     }
   }
+
 ### include the base64-encoded images for buttons ----------------------
 
 image create photo button_open -data {

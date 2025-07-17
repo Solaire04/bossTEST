@@ -53,12 +53,8 @@ set DEFAULTS    {
   gpibCommands	{v "id *IDN? reset *RST triac O2000] volt \{MEAS:VOLT:DC? DEF,DEF\}" h "Known GPIB commands" }
   }
 
-#set GPIB [dict create \
-#  id	"*IDN?" \
-#  reset	"*RST" \
-#  triac	"O2000[chr 0x00]" \
-#  volt	"MEAS:VOLT:DC? DEF,DEF" \
-#  ]
+### top left corner of the window frame; program still runs if this icon is missing
+set iconfile /usr/local/share/icons/hicolor/64x64/apps/boss.png
 
 ### ensure all needed libraries are available ---------------------------------------
 
@@ -1078,13 +1074,13 @@ vector create ::calW ::calA
 if {$DEBUG} { puts stderr "DEBUG: configuring GUI" }
 
 wm geometry . $wmG; wm title . "$APPNAME v.$VERSION ($PLATFORM)"
-if { [catch {set icp [open /usr/local/share/icons/hicolor/64x64/apps/boss.png  "r"]}] } {
-    if ($DEBUG) { puts stderr "DEBUG: icon file missing/unable to read /usr/local/share/icons/hicolor/64x64/apps/boss.png" }
-    close icp
-    }\
-  else {
-    wm iconphoto . [image create photo -file /usr/local/share/icons/hicolor/64x64/apps/boss.png]
-    }
+if { [catch {open $iconfile} icp] } {
+   if ($DEBUG) {puts stderr "DEBUG: icon file missing/unable to read $iconfile"}
+   }\
+else {
+   close $icp
+   wm iconphoto . [image create photo -file $iconfile]
+   }
 wm minsize . $MIN_W $MIN_H
 wm protocol . WM_DELETE_WINDOW {
   set answer [tk_messageBox -message "Quit $APPNAME?" -type yesno]

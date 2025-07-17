@@ -417,7 +417,7 @@ proc SaveROI {x1 y1 x2 y2 fname} {
   }
     
 proc saveFile { fname } {
-  global DEBUG ::x ::y WorkDir cameraInfo expTime expUnit imgImg ROI ch
+  global DEBUG raw2 ::x ::y WorkDir cameraInfo expTime expUnit imgImg ROI ch
   set filename [string tolower [file rootname $fname]]
   set ftype [string trimleft [string tolower [file extension $fname]] "."]
   set file_types {}
@@ -917,7 +917,7 @@ proc displayImg {} {
   }
 
 proc displaySpectrum {x1 y1 x2 y2} {
-  global DEBUG ::x ::y imgImg imgW imgH h_size v_size slope yint
+  global DEBUG $raw2 ::x ::y imgImg imgW imgH h_size v_size slope yint
   set h_size [expr $x2 - $x1]
   set v_size [expr $y2 - $y1]
   set imgH [image height $imgImg]

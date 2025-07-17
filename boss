@@ -917,7 +917,7 @@ proc displayImg {} {
   }
 
 proc displaySpectrum {x1 y1 x2 y2} {
-  global DEBUG $raw2 ::x ::y imgImg imgW imgH h_size v_size slope yint
+  global DEBUG raw2 ::x ::y imgImg imgW imgH h_size v_size slope yint
   set h_size [expr $x2 - $x1]
   set v_size [expr $y2 - $y1]
   set imgH [image height $imgImg]

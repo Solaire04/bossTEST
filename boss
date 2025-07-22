@@ -1,6 +1,6 @@
 #!/bin/bash
 # the next line restarts using wish\
-LD_LIBRARY_PATH="/opt/ASI_linux_mac_SDK_V1.38/lib/x64:$LD_LIBRARY_PATH" C_INCLUDE_PATH="/opt/ASI_linux_mac_SDK_V1.38/include:$C_INCLUDE_PATH" exec wish "$0" "$@"
+LD_LIBRARY_PATH="/opt/ASI_linux_mac_SDK_V1.37/lib/x64:$LD_LIBRARY_PATH" C_INCLUDE_PATH="/opt/ASI_linux_mac_SDK_V1.37/include:$C_INCLUDE_PATH" exec wish "$0" "$@"
 
 ### if the ASI libraries are installed in the search path, this is all that is needed
 ###exec wish "$0" "$@"
@@ -21,7 +21,7 @@ LD_LIBRARY_PATH="/opt/ASI_linux_mac_SDK_V1.38/lib/x64:$LD_LIBRARY_PATH" C_INCLUD
 ###
 set APPNAME     [lindex [file split [info script]] end]
 set PLATFORM    [lindex [array get tcl_platform os] 1]
-set VERSION     2025.07.16
+set VERSION     2025.07.22
 
 ### at runtime, can set these flags, if passed as run-time parameters
 set DEBUG 0
@@ -573,7 +573,7 @@ proc loadFile { fname } {
 ### tcl wrappers for the ASI C library
 
 proc findAllCameras {} {
-  global listOfCameras
+  global DEBUG listOfCameras
   if { [catch {set nCameras [ASIGetNumOfConnectedCameras]}] } { 
      setStatus "error" " No cameras found, is the power on?"
      set listOfCameras {}
@@ -870,7 +870,7 @@ proc getSnapshot {} {
       } \
     elseif {"$ASI_EXPOSURE_STATUS($status)" == "FAILED"} {
       setStatus "error" "Exposure FAILED, aborting and resetting the camera"
-      update; after 1000;
+      update; after 1000
       if { [catch {ASIInitCamera $cameraId}] } {
         setStatus "error" " Error initializing camera $i, should never happen..."
         .ts.lv.tbar.snap configure -bg white -fg red
@@ -1040,7 +1040,7 @@ set imgH $MIN_H
 set imgW $MIN_W
 set ROI "0 [expr $imgH/2] $imgW [expr $imgH/2+50]"
 set gpib_board "0"
-set dev_addr "22"
+set dev_addr "1"
 
 ### update settings from the values saved in ~/.bossrc file
 if { [catch {set file [open $RCNAME "r"]}] } {
@@ -1637,19 +1637,17 @@ if {$DEBUG} { puts stderr "DEBUG: first call to C library. If segfault now, rese
 
 findAllCameras
 set nCameras [llength $listOfCameras]
-if {$DEBUG} { puts stderr "DEBUG: found $nCameras" }
-if { $nCameras > 1 } {
-  setStatus "warning" "Found $nCameras cameras, select one"
-  set cameraId -1
-  set cameraNow ""
-  } \
-elseif { $nCameras == 1 } { 
+if {$DEBUG} { puts stderr "DEBUG: found $nCameras $listOfCameras" }
+if { $nCameras >= 1 } {
+  .ts.lv.tbar.vdev configure -textvariable cameraNow -values $listOfCameras
+  setStatus "warning" "Found $nCameras cameras, selecting the first one"
   set cameraId 0
   set cameraNow [lindex $listOfCameras $cameraId]
-  setStatus "ok" "Auto-selected $cameraId: $cameraNow"
   } \
 else {
   setStatus "error" "No compatible cameras available"
+  set cameraId -1
+  set cameraNow ""
   }
 
 if {$DEBUG} { puts stderr "DEBUG: cameraId = $cameraId now" }

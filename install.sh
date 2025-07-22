@@ -17,6 +17,7 @@ done
 install -v -m755 boss ${PREFIX}/bin
 install -v -m644 boss.desktop ${PREFIX}/share/applications
 install -v -m644 boss.svg ${PREFIX}/share/icons/hicolor/scalable/apps/
+install -v -m644 99-zwo.rules /etc/udev/rules.d
 
 echo "Installing icons into ${PREFIX}/share/icons/hicolor/\*/apps"
 

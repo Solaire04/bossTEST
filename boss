@@ -1,6 +1,6 @@
 #!/bin/bash
 # the next line restarts using wish\
-LD_LIBRARY_PATH="/opt/ASI_linux_mac_SDK_V1.37/lib/x64:$LD_LIBRARY_PATH" C_INCLUDE_PATH="/opt/ASI_linux_mac_SDK_V1.37/include:$C_INCLUDE_PATH" exec wish "$0" "$@"
+LD_LIBRARY_PATH="/opt/ASI_linux_mac_SDK_V1.38/lib/x64:$LD_LIBRARY_PATH" C_INCLUDE_PATH="/opt/ASI_linux_mac_SDK_V1.38/include:$C_INCLUDE_PATH" exec wish "$0" "$@"
 
 ### if the ASI libraries are installed in the search path, this is all that is needed
 ###exec wish "$0" "$@"
@@ -1036,8 +1036,8 @@ set imgData ""
 set imgImg [image create photo -palette 65535]
 set imgZoom $imgZoomDefault
 set imgType 2
-set imgH $MIN_H
-set imgW $MIN_W
+set imgW [expr max($MIN_W,[winfo screenwidth . ]-100)]
+set imgH [expr max($MIN_H,[winfo screenheight . ]-100)]
 set ROI "0 [expr $imgH/2] $imgW [expr $imgH/2+50]"
 set gpib_board "0"
 set dev_addr "1"
@@ -1313,7 +1313,7 @@ bind .ts.sp.g <2> {
   set ch($ncal) [format "%%.2f" [expr ($sx-$yint)/$slope]]
   }
 
-.ts tab configure Spectrum -window .ts.sp -anchor nw
+.ts tab configure Spectrum -window .ts.sp -expand 1 -fill both
 
 frame .ts.cb
 frame .ts.cb.l
@@ -1364,7 +1364,7 @@ fillCalTable
 
 frame .ts.cb.r
 #table .ts.cb 0,5 .ts.cb.r -rspan [expr $i+1] -fill y
-pack [graph .ts.cb.r.g -width 720 -bd 2 -relief groove] -fill y -expand 1
+pack [graph .ts.cb.r.g -width [expr max(720,[winfo screenwidth .ts.cb.r])] -bd 2 -relief groove] -fill y -expand 1
 .ts.cb.r.g element create points -pixels 5 -linewidth 0
 .ts.cb.r.g element create line -pixels 1 -linewidth 1 -color green
 .ts.cb.r.g legend configure -hide 1

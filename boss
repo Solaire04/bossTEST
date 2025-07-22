@@ -50,7 +50,7 @@ set DEFAULTS    {
   expUnit	{v "ms"		h "time units" }
   macroFile	{v ""		h "file(.bcm) with BOSS Command Macro script" }
   ROI		{v "0 1200 2821 1250" h "Region Of Interest, in pixels" }
-  gpibCommands	{v "id *IDN? reset *RST triac O2000] volt \{MEAS:VOLT:DC? DEF,DEF\}" h "Known GPIB commands" }
+  gpibCommands	{v "id *IDN? reset *RST triac O2000 volt \{MEAS:VOLT:DC? DEF,DEF\}" h "Known GPIB commands" }
   }
 
 ### top left corner of the window frame; program still runs if this icon is missing
@@ -1495,9 +1495,9 @@ proc sendGPIB {cmd} {
     set Rxdata ""; setStatus "ok" "Sending \"$str\" to GPIB device $gpib_dev"
     if {$append_null || "$str"=="O2000"} {$gpib_dev write "$str[chr 0x00]"} else {$gpib_dev write "$str"}
     # if the sent command contained "?", expect a reply
-    if {[string first "?" $str] != -1} {
-      if {[catch {$gpib_dev read} Rxdata]} {set Rxdata ""; setStatus "error" "Error reading from $gpib_dev"}
-      }
+    #if {[string first "?" $str] != -1} {
+      if {[catch {$gpib_dev read} Rxdata]} {set Rxdata ""; setStatus "warning" "No reply from $gpib_dev"}
+    #  }
     }\
   else { setStatus "warning" "No GPIB device connected" }
   update
@@ -1518,7 +1518,7 @@ proc connectGPIB { } {
       setStatus "error" "GPIB$gpib_board:$dev_addr not found"
       return
       }
-    set dev_id [$gpib_dev cmd_read *IDN?]
+    if {[catch {set dev_id [$gpib_dev cmd_read *IDN?]}]} { set dev_id "unknown device" }
     if {$DEBUG} {puts stderr "DEBUG: Found $dev_id at $gpib_board:$dev_addr"}
     $gpib_dev remote_enable
     set i [$gpib_dev ready]

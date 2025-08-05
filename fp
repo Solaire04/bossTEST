@@ -1488,6 +1488,8 @@ foreach {abbr command} $gpibCommands { dict append GPIB $abbr $command }
 
 proc sendGPIB {cmd} {
   global DEBUG gpib_dev append_null Rxdata Txdata GPIB
+  fconfigure $gpib_dev -translation lf 
+  #Ideally allows for carriage returns in command lines
   if {"$cmd"==""} { set str "$Txdata" }\
   else { if {[dict exists $GPIB $cmd]} {set str [dict get $GPIB $cmd]} else {set str "$cmd"} }
   if {$DEBUG} {puts stderr "DEBUG: GPIB command $cmd --> ${str} ([string length ${str}])"}

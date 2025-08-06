@@ -1496,6 +1496,7 @@ proc sendGPIB {cmd} {
   if {[info exists gpib_dev]} {
     set Rxdata ""; setStatus "ok" "Sending \"$str\" to GPIB device $gpib_dev"
     if {$append_null || "$str"=="O2000"} {$gpib_dev write "$str[chr 0x00]"} else {$gpib_dev write "$str"}
+    if {"$str"=="C0"} {$gpib_dev write "$str[chr 0x0d]"} else {$gpib_dev write "$str"}
     # if the sent command contained "?", expect a reply
     #if {[string first "?" $str] != -1} {
       if {[catch {$gpib_dev read} Rxdata]} {set Rxdata ""; setStatus "warning" "No reply from $gpib_dev"}

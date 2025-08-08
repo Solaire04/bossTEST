@@ -1594,6 +1594,9 @@ if {$NOGPIB} {.ts tab configure GPIB -hidden 1}
 
 ### Start of new Tab for Triax control -----------------------------------------------------
 
+frame .ts.tr
+label .ts.tr.label -text "Control Spectrometer"
+table .ts.tr 0,0 .ts.settings.label -cspan 2
 
 
 

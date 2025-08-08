@@ -1592,6 +1592,14 @@ pack .ts.gpib.td -side top -fill x -expand 1
 .ts tab configure GPIB -window .ts.gpib -anchor n -fill x
 if {$NOGPIB} {.ts tab configure GPIB -hidden 1}
 
+### Start of new Tab for Triax control -----------------------------------------------------
+
+
+
+
+.ts tab configure Spectrometer -window .ts.gpib -anchor n -fill x
+#Seems to be the final command that forms the tab in the menus
+
 ### pop-up help ----------------------------------------------------------------------------
 
 tooltip::tooltip .ts.lv.tbar.vdev "Select the camera from the list\nIf only one, it will autoconnect"

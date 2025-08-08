@@ -1594,14 +1594,70 @@ if {$NOGPIB} {.ts tab configure GPIB -hidden 1}
 
 ### Start of new Tab for Triax control -----------------------------------------------------
 
-frame .ts.tr
-label .ts.tr.label -text "Control Spectrometer"
-table .ts.tr 0,0 .ts.settings.label -cspan 2
+frame .ts.settings
+label .ts.settings.label -text "Control Parameters"
+table .ts.settings 0,0 .ts.settings.label -cspan 2
+set i 1
+foreach paramName [dict keys $settings] {
+  global $paramName ${paramName}_h
+  if {"$paramName"=="wmG"} {continue}; # skip over the wm geometry, keep it internal
+  label .ts.settings.l_${paramName} -text "$paramName"
+  entry .ts.settings.v_${paramName} -textvariable $paramName
+  label .ts.settings.h_${paramName} -text [set [set paramName]_h]
+  table .ts.settings \
+    $i,0 .ts.settings.l_${paramName} -anchor e \
+    $i,1 .ts.settings.v_${paramName} \
+    $i,2 .ts.settings.h_${paramName} -anchor w
+  incr i
+  }
+  
+frame .ts.settings.actions
+button .ts.settings.actions.saveConfig -text "Save .cfg" -bg LightGreen -command {SaveSettings 1 $File}
+button .ts.settings.actions.loadConfig -text "Load .cfg" -bg LightGreen -command {LoadSettings 1 $File}
+button .ts.settings.executeMacro -text "Go" -bg LightGreen -command { executeMacro }
 
+proc executeMacro {} {
+  set script [split [.ts.settings.macro.script get 0.0 end] \n]
+  for {set i 0} {$i<[llength $script]} {incr i} {
+    set line [lindex $script $i]
+    if {"$line"!=""} {
+      setStatus "ok" "Executing \{ $line \} "
+      uplevel 1 $line
+      }
+    } 
+  }
 
+frame .ts.settings.macro -width 60 -height 10 
+#text .ts.settings.script -yscrollcommand ".ts.settings.scroll set" -setgrid true -width 40 -height 10 -background white -undo 1
+text .ts.settings.macro.script -background white -yscrollcommand ".ts.settings.macro.scroll set"
+if {"$macroFile" != "" } {
+  if { [catch {open "$macroFile.bcm" r} fp] } {
+    puts stderr "WARNING: Could not read the script from $macroFile.bcm"
+    }\
+  else {
+    set script [read $fp]
+    .ts.settings.macro.script delete 0.0 end
+    .ts.settings.macro.script insert end [string trim $script]
+    close $fp
+    }
+  }
+scrollbar .ts.settings.macro.scroll -command ".ts.settings.macro.script yview"
+pack .ts.settings.macro.script .ts.settings.macro.scroll -side left -fill y
 
-.ts tab configure Spectrometer -window .ts.gpib -anchor n -fill x
-#Seems to be the final command that forms the tab in the menus
+pack .ts.settings.actions.saveConfig .ts.settings.actions.loadConfig -side left
+table .ts.settings $i,0 .ts.settings.actions -cspan 2
+table .ts.settings $i,2 .ts.settings.executeMacro
+incr i
+table .ts.settings $i,0 .ts.settings.macro -cspan 3 
+table configure .ts.settings -propagate true
+
+.ts tab configure Settings -window .ts.settings -anchor n
+
+set fileName ""
+newVector ::x ""
+newVector ::x0 ""
+newVector ::y ""
+newVector ::z ""
 
 ### pop-up help ----------------------------------------------------------------------------
 

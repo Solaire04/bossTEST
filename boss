@@ -1595,61 +1595,15 @@ if {$NOGPIB} {.ts tab configure GPIB -hidden 1}
 ### Start of new Tab for Triax control -----------------------------------------------------
 
 frame .ts.triax
-label .ts.triax.label -text "Control Parameters"
-table .ts.triax 0,0 .ts.triax.label -cspan 2
-set i 1
-foreach paramName [dict keys $settings] {
-  global $paramName ${paramName}_h
-  if {"$paramName"=="wmG"} {continue}; # skip over the wm geometry, keep it internal
-  label .ts.triax.l_${paramName} -text "$paramName"
-  entry .ts.triax.v_${paramName} -textvariable $paramName
-  label .ts.triax.h_${paramName} -text [set [set paramName]_h]
-  table .ts.triax \
-    $i,0 .ts.triax.l_${paramName} -anchor e \
-    $i,1 .ts.triax.v_${paramName} \
-    $i,2 .ts.triax.h_${paramName} -anchor w
-  incr i
-  }
+label .ts.triax.label -text "Spectrometer Control Menu"
   
 frame .ts.triax.actions
-button .ts.triax.actions.saveConfig -text "Save .cfg" -bg LightGreen -command {SaveSettings 1 $File}
-button .ts.triax.actions.loadConfig -text "Load .cfg" -bg LightGreen -command {LoadSettings 1 $File}
-button .ts.triax.executeMacro -text "Go" -bg LightGreen -command { executeMacro }
+button .ts.triax.actions.command1 -text "Test1" -bg LightGreen -command {SaveSettings 1 $File}
+button .ts.triax.actions.command2 -text "Test2" -bg LightGreen -command {SaveSettings 1 $File}
+button .ts.triax.actions.command3 -text "Test3" -bg LightGreen -command {SaveSettings 1 $File}
 
-proc executeMacro {} {
-  set script [split [.ts.triax.macro.script get 0.0 end] \n]
-  for {set i 0} {$i<[llength $script]} {incr i} {
-    set line [lindex $script $i]
-    if {"$line"!=""} {
-      setStatus "ok" "Executing \{ $line \} "
-      uplevel 1 $line
-      }
-    } 
-  }
-
-frame .ts.triax.macro -width 60 -height 10 
-#text .ts.triax.script -yscrollcommand ".ts.triax.scroll set" -setgrid true -width 40 -height 10 -background white -undo 1
-text .ts.triax.macro.script -background white -yscrollcommand ".ts.triax.macro.scroll set"
-if {"$macroFile" != "" } {
-  if { [catch {open "$macroFile.bcm" r} fp] } {
-    puts stderr "WARNING: Could not read the script from $macroFile.bcm"
-    }\
-  else {
-    set script [read $fp]
-    .ts.triax.macro.script delete 0.0 end
-    .ts.triax.macro.script insert end [string trim $script]
-    close $fp
-    }
-  }
-scrollbar .ts.triax.macro.scroll -command ".ts.triax.macro.script yview"
-pack .ts.triax.macro.script .ts.triax.macro.scroll -side left -fill y
-
-pack .ts.triax.actions.saveConfig .ts.triax.actions.loadConfig -side left
-table .ts.triax $i,0 .ts.triax.actions -cspan 2
-table .ts.triax $i,2 .ts.triax.executeMacro
-incr i
-table .ts.triax $i,0 .ts.triax.macro -cspan 3 
-table configure .ts.triax -propagate true
+pack .ts.triax.actions.command1 .ts.triax.actions.command2 -side left
+pack .ts.triax.actions.command3 -side right
 
 .ts tab configure Control -window .ts.triax -anchor n
 

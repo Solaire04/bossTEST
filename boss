@@ -45,9 +45,9 @@ set imgZoomDefault 4
 interp alias {} chr {} format %c
 
 set DEFAULTS    {
-  targetTemp    {v 5*		h "sensor cooling target, down to 35\u00B0C below ambient" }
+  targetTemp    {v 5		h "sensor cooling target, down to 35\u00B0C below ambient" }
   expTime	{v 100 		h "exposure time" }
-  expUnit	{v "ms"		h "time units" }
+  expUnit	{v "ms"		h "time units TEST" }
   macroFile	{v ""		h "file(.bcm) with BOSS Command Macro script" }
   ROI		{v "0 1200 2821 1250" h "Region Of Interest, in pixels" }
   gpibCommands	{v "id *IDN? reset *RST triax O2000 volt \{MEAS:VOLT:DC? DEF,DEF\}" h "Known GPIB commands" }

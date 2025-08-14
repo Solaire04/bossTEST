@@ -45,7 +45,7 @@ set imgZoomDefault 4
 interp alias {} chr {} format %c
 
 set DEFAULTS    {
-  targetTemp    {v 5		h "sensor cooling target, down to 35\u00B0C below ambient" }
+  targetTemp    {v 5		h "sans" }
   expTime	{v 100 		h "exposure time" }
   expUnit	{v "ms"		h "time units" }
   macroFile	{v ""		h "file(.bcm) with BOSS Command Macro script" }

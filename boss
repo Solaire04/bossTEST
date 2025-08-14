@@ -37,7 +37,7 @@ set PWD         [pwd]
 set RCNAME      [file join [cd; pwd] .${APPNAME}rc]
 set MIN_W       1080
 set MIN_H       720
-set TABS        {Settings Camera Spectrum Calibrate GPIB Spectrometer}
+set TABS        {Settings Camera Spectrum Calibrate GPIB Control}
 
 set zoomFactors { 16 8 4 2 1 }
 set imgZoomDefault 4

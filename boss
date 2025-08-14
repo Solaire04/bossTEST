@@ -1610,9 +1610,9 @@ pack .ts.triax.actions.command3 -side right
 ### pop-up help ----------------------------------------------------------------------------
 
 tooltip::tooltip .ts.lv.tbar.vdev "Select the camera from the list\nIf only one, it will autoconnect"
-tooltip::tooltip .ts.triax.actions.saveConfig "Save the settings into a .cfg file"
-tooltip::tooltip .ts.triax.actions.loadConfig "Load the settings from a .cfg file"
-tooltip::tooltip .ts.triax.executeMacro "Execute the tcl commands from the widget below"
+tooltip::tooltip .ts.triax.actions.command1 "TBA"
+tooltip::tooltip .ts.triax.actions.command2 "TBA"
+tooltip::tooltip .ts.triax.actions.command3 "TBA"
 tooltip::tooltip .ts.lv.tbar.reset "(Re)Connect the selected camera"
 tooltip::tooltip .ts.lv.tbar.cool "Toggle the power to the camera sensor cooler"
 tooltip::tooltip .ts.lv.tbar.snap "Get a full-frame snapshot from the camera"

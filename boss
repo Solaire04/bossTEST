@@ -1029,7 +1029,7 @@ set targetTemp 15
 set coolerOn 0
 set coolPowerPerc 0
 set expTime 10
-set expUnit ms
+set expUnit msTEST
 set expUnits { \u03BCs 1 ms 1000 s 1000000 }
 set macroFile ""
 set imgData ""

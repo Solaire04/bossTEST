@@ -1594,45 +1594,64 @@ if {$NOGPIB} {.ts tab configure GPIB -hidden 1}
 
 ### Start of new Tab for Triax control -----------------------------------------------------
 
-frame .ts.sc
-frame .ts.sc.tbar
-menubutton .ts.sc.tbar.file -text "File" -relief raised -menu .ts.sp.tbar.file.m 
-menu .ts.sc.tbar.file.m -tearoff 0
-  .ts.sc.tbar.file.m add command -label "Save spectrum" -command { saveFile ".dat" }
-  #.ts.sc.tbar.file.m add separator
-label .ts.sc.tbar.lroi -text "  ROI"
-entry .ts.sc.tbar.roi -textvariable ROI -width 20
-bind .ts.sc.tbar.roi <Return> { adjustROI }
-button .ts.sc.tbar.reset -text "\u27F3" -command { adjustROI }
-button .ts.sc.tbar.cal -text "Calibrate \u259e" -state normal -command {blt::CreateTearoff .ts Calibrate}
-#entry .ts.sc.tbar.y1 -textvariable v_shift -width 5 -validate focus -vcmd  {string is int %P}
-label .ts.sc.tbar.ldy -text "band of "
-entry .ts.sc.tbar.dy -textvariable v_size -width 5 -validate focus -vcmd  {string is int %P}
-#bind .ts.sc.tbar.y1 <Return> { lset ROI 1 $v_shift; lset ROI 3 [expr $v_shift + $v_size]; adjustROI}
-bind .ts.sc.tbar.dy <Return> { lset ROI 3 [expr $v_shift + $v_size]; adjustROI }
-pack .ts.sc.tbar.file .ts.sp.tbar.lroi .ts.sp.tbar.roi .ts.sp.tbar.reset .ts.sp.tbar.cal -side left -fill x
-pack .ts.sc.tbar.dy .ts.sp.tbar.ldy -side right
-pack .ts.sc.tbar -side top -fill x
+frame .ts.settings
+label .ts.settings.label -text "Control Parameters"
+table .ts.settings 0,0 .ts.settings.label -cspan 2
+set i 1
+foreach paramName [dict keys $settings] {
+  global $paramName ${paramName}_h
+  if {"$paramName"=="wmG"} {continue}; # skip over the wm geometry, keep it internal
+  label .ts.settings.l_${paramName} -text "$paramName"
+  entry .ts.settings.v_${paramName} -textvariable $paramName
+  label .ts.settings.h_${paramName} -text [set [set paramName]_h]
+  table .ts.settings \
+    $i,0 .ts.settings.l_${paramName} -anchor e \
+    $i,1 .ts.settings.v_${paramName} \
+    $i,2 .ts.settings.h_${paramName} -anchor w
+  incr i
+  }
+  
+frame .ts.settings.actions
+button .ts.settings.actions.saveConfig -text "Save .cfg" -bg LightGreen -command {SaveSettings 1 $File}
+button .ts.settings.actions.loadConfig -text "Load .cfg" -bg LightGreen -command {LoadSettings 1 $File}
+button .ts.settings.executeMacro -text "Go" -bg LightGreen -command { executeMacro }
 
-frame .ts.sc.rbar
-scale .ts.sc.rbar.vs -variable v_shift -from 0 -to [expr [image height $imgImg] - $v_size -1] -showvalue true -orient vertical\
-  -command { lset ROI 3 [expr $v_shift + $v_size]; lset ROI 1 }
-label .ts.sc.rbar.x -text "----"
-label .ts.sc.rbar.y -text "----"
-pack .ts.sc.rbar -side right -fill y
-pack .ts.sc.rbar.y .ts.sp.rbar.x -side bottom
-pack .ts.sc.rbar.vs -expand 1 -fill both
-bind .ts.sc.rbar.vs <ButtonRelease> { adjustROI }
-pack .ts.sc.g  -expand 1  -fill both
-InitCrosshairs .ts.sc.g
-bind .ts.sc.g <Motion> {atXhairs .ts.sp.g}
-## note inside bind, % has meaning, needs escaping as %%
-bind .ts.sc.g <2> {
-  global sx yint slope ch ncal
-  set ch($ncal) [format "%%.2f" [expr ($sx-$yint)/$slope]]
+proc executeMacro {} {
+  set script [split [.ts.settings.macro.script get 0.0 end] \n]
+  for {set i 0} {$i<[llength $script]} {incr i} {
+    set line [lindex $script $i]
+    if {"$line"!=""} {
+      setStatus "ok" "Executing \{ $line \} "
+      uplevel 1 $line
+      }
+    } 
   }
 
-.ts tab configure Control -window .ts.sp -expand 1 -fill both
+frame .ts.settings.macro -width 60 -height 10 
+#text .ts.settings.script -yscrollcommand ".ts.settings.scroll set" -setgrid true -width 40 -height 10 -background white -undo 1
+text .ts.settings.macro.script -background white -yscrollcommand ".ts.settings.macro.scroll set"
+if {"$macroFile" != "" } {
+  if { [catch {open "$macroFile.bcm" r} fp] } {
+    puts stderr "WARNING: Could not read the script from $macroFile.bcm"
+    }\
+  else {
+    set script [read $fp]
+    .ts.settings.macro.script delete 0.0 end
+    .ts.settings.macro.script insert end [string trim $script]
+    close $fp
+    }
+  }
+scrollbar .ts.settings.macro.scroll -command ".ts.settings.macro.script yview"
+pack .ts.settings.macro.script .ts.settings.macro.scroll -side left -fill y
+
+pack .ts.settings.actions.saveConfig .ts.settings.actions.loadConfig -side left
+table .ts.settings $i,0 .ts.settings.actions -cspan 2
+table .ts.settings $i,2 .ts.settings.executeMacro
+incr i
+table .ts.settings $i,0 .ts.settings.macro -cspan 3 
+table configure .ts.settings -propagate true
+
+.ts tab configure Control -window .ts.settings -anchor n
 
 ### pop-up help ----------------------------------------------------------------------------
 

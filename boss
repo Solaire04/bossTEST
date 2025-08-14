@@ -1594,30 +1594,30 @@ if {$NOGPIB} {.ts tab configure GPIB -hidden 1}
 
 ### Start of new Tab for Triax control -----------------------------------------------------
 
-frame .ts.settings
-label .ts.settings.label -text "Control Parameters"
-table .ts.settings 0,0 .ts.settings.label -cspan 2
+frame .ts.triax
+label .ts.triax.label -text "Control Parameters"
+table .ts.triax 0,0 .ts.triax.label -cspan 2
 set i 1
 foreach paramName [dict keys $settings] {
   global $paramName ${paramName}_h
   if {"$paramName"=="wmG"} {continue}; # skip over the wm geometry, keep it internal
-  label .ts.settings.l_${paramName} -text "$paramName"
-  entry .ts.settings.v_${paramName} -textvariable $paramName
-  label .ts.settings.h_${paramName} -text [set [set paramName]_h]
-  table .ts.settings \
-    $i,0 .ts.settings.l_${paramName} -anchor e \
-    $i,1 .ts.settings.v_${paramName} \
-    $i,2 .ts.settings.h_${paramName} -anchor w
+  label .ts.triax.l_${paramName} -text "$paramName"
+  entry .ts.triax.v_${paramName} -textvariable $paramName
+  label .ts.triax.h_${paramName} -text [set [set paramName]_h]
+  table .ts.triax \
+    $i,0 .ts.triax.l_${paramName} -anchor e \
+    $i,1 .ts.triax.v_${paramName} \
+    $i,2 .ts.triax.h_${paramName} -anchor w
   incr i
   }
   
-frame .ts.settings.actions
-button .ts.settings.actions.saveConfig -text "Save .cfg" -bg LightGreen -command {SaveSettings 1 $File}
-button .ts.settings.actions.loadConfig -text "Load .cfg" -bg LightGreen -command {LoadSettings 1 $File}
-button .ts.settings.executeMacro -text "Go" -bg LightGreen -command { executeMacro }
+frame .ts.triax.actions
+button .ts.triax.actions.saveConfig -text "Save .cfg" -bg LightGreen -command {SaveSettings 1 $File}
+button .ts.triax.actions.loadConfig -text "Load .cfg" -bg LightGreen -command {LoadSettings 1 $File}
+button .ts.triax.executeMacro -text "Go" -bg LightGreen -command { executeMacro }
 
 proc executeMacro {} {
-  set script [split [.ts.settings.macro.script get 0.0 end] \n]
+  set script [split [.ts.triax.macro.script get 0.0 end] \n]
   for {set i 0} {$i<[llength $script]} {incr i} {
     set line [lindex $script $i]
     if {"$line"!=""} {
@@ -1627,38 +1627,38 @@ proc executeMacro {} {
     } 
   }
 
-frame .ts.settings.macro -width 60 -height 10 
-#text .ts.settings.script -yscrollcommand ".ts.settings.scroll set" -setgrid true -width 40 -height 10 -background white -undo 1
-text .ts.settings.macro.script -background white -yscrollcommand ".ts.settings.macro.scroll set"
+frame .ts.triax.macro -width 60 -height 10 
+#text .ts.triax.script -yscrollcommand ".ts.triax.scroll set" -setgrid true -width 40 -height 10 -background white -undo 1
+text .ts.triax.macro.script -background white -yscrollcommand ".ts.triax.macro.scroll set"
 if {"$macroFile" != "" } {
   if { [catch {open "$macroFile.bcm" r} fp] } {
     puts stderr "WARNING: Could not read the script from $macroFile.bcm"
     }\
   else {
     set script [read $fp]
-    .ts.settings.macro.script delete 0.0 end
-    .ts.settings.macro.script insert end [string trim $script]
+    .ts.triax.macro.script delete 0.0 end
+    .ts.triax.macro.script insert end [string trim $script]
     close $fp
     }
   }
-scrollbar .ts.settings.macro.scroll -command ".ts.settings.macro.script yview"
-pack .ts.settings.macro.script .ts.settings.macro.scroll -side left -fill y
+scrollbar .ts.triax.macro.scroll -command ".ts.triax.macro.script yview"
+pack .ts.triax.macro.script .ts.triax.macro.scroll -side left -fill y
 
-pack .ts.settings.actions.saveConfig .ts.settings.actions.loadConfig -side left
-table .ts.settings $i,0 .ts.settings.actions -cspan 2
-table .ts.settings $i,2 .ts.settings.executeMacro
+pack .ts.triax.actions.saveConfig .ts.triax.actions.loadConfig -side left
+table .ts.triax $i,0 .ts.triax.actions -cspan 2
+table .ts.triax $i,2 .ts.triax.executeMacro
 incr i
-table .ts.settings $i,0 .ts.settings.macro -cspan 3 
-table configure .ts.settings -propagate true
+table .ts.triax $i,0 .ts.triax.macro -cspan 3 
+table configure .ts.triax -propagate true
 
-.ts tab configure Control -window .ts.settings -anchor n
+.ts tab configure Control -window .ts.triax -anchor n
 
 ### pop-up help ----------------------------------------------------------------------------
 
 tooltip::tooltip .ts.lv.tbar.vdev "Select the camera from the list\nIf only one, it will autoconnect"
-tooltip::tooltip .ts.settings.actions.saveConfig "Save the settings into a .cfg file"
-tooltip::tooltip .ts.settings.actions.loadConfig "Load the settings from a .cfg file"
-tooltip::tooltip .ts.settings.executeMacro "Execute the tcl commands from the widget below"
+tooltip::tooltip .ts.triax.actions.saveConfig "Save the settings into a .cfg file"
+tooltip::tooltip .ts.triax.actions.loadConfig "Load the settings from a .cfg file"
+tooltip::tooltip .ts.triax.executeMacro "Execute the tcl commands from the widget below"
 tooltip::tooltip .ts.lv.tbar.reset "(Re)Connect the selected camera"
 tooltip::tooltip .ts.lv.tbar.cool "Toggle the power to the camera sensor cooler"
 tooltip::tooltip .ts.lv.tbar.snap "Get a full-frame snapshot from the camera"

@@ -47,7 +47,7 @@ interp alias {} chr {} format %c
 set DEFAULTS    {
   targetTemp    {v 5		h "sensor cooling target, down to 35\u00B0C below ambient" }
   expTime	{v 100 		h "exposure time" }
-  expUnit	{v "ms"		h "time units TEST" }
+  expUnit	{v "ms"		h "time units" }
   macroFile	{v ""		h "file(.bcm) with BOSS Command Macro script" }
   ROI		{v "0 1200 2821 1250" h "Region Of Interest, in pixels" }
   gpibCommands	{v "id *IDN? reset *RST triax O2000 volt \{MEAS:VOLT:DC? DEF,DEF\}" h "Known GPIB commands" }
@@ -1029,7 +1029,7 @@ set targetTemp 15
 set coolerOn 0
 set coolPowerPerc 0
 set expTime 10
-set expUnit msTEST
+set expUnit ms
 set expUnits { \u03BCs 1 ms 1000 s 1000000 }
 set macroFile ""
 set imgData ""
@@ -1594,13 +1594,45 @@ if {$NOGPIB} {.ts tab configure GPIB -hidden 1}
 
 ### Start of new Tab for Triax control -----------------------------------------------------
 
+frame .ts.sc
+frame .ts.sc.tbar
+menubutton .ts.sc.tbar.file -text "File" -relief raised -menu .ts.sp.tbar.file.m 
+menu .ts.sc.tbar.file.m -tearoff 0
+  .ts.sc.tbar.file.m add command -label "Save spectrum" -command { saveFile ".dat" }
+  #.ts.sc.tbar.file.m add separator
+label .ts.sc.tbar.lroi -text "  ROI"
+entry .ts.sc.tbar.roi -textvariable ROI -width 20
+bind .ts.sc.tbar.roi <Return> { adjustROI }
+button .ts.sc.tbar.reset -text "\u27F3" -command { adjustROI }
+button .ts.sc.tbar.cal -text "Calibrate \u259e" -state normal -command {blt::CreateTearoff .ts Calibrate}
+#entry .ts.sc.tbar.y1 -textvariable v_shift -width 5 -validate focus -vcmd  {string is int %P}
+label .ts.sc.tbar.ldy -text "band of "
+entry .ts.sc.tbar.dy -textvariable v_size -width 5 -validate focus -vcmd  {string is int %P}
+#bind .ts.sc.tbar.y1 <Return> { lset ROI 1 $v_shift; lset ROI 3 [expr $v_shift + $v_size]; adjustROI}
+bind .ts.sc.tbar.dy <Return> { lset ROI 3 [expr $v_shift + $v_size]; adjustROI }
+pack .ts.sc.tbar.file .ts.sp.tbar.lroi .ts.sp.tbar.roi .ts.sp.tbar.reset .ts.sp.tbar.cal -side left -fill x
+pack .ts.sc.tbar.dy .ts.sp.tbar.ldy -side right
+pack .ts.sc.tbar -side top -fill x
 
+frame .ts.sc.rbar
+scale .ts.sc.rbar.vs -variable v_shift -from 0 -to [expr [image height $imgImg] - $v_size -1] -showvalue true -orient vertical\
+  -command { lset ROI 3 [expr $v_shift + $v_size]; lset ROI 1 }
+label .ts.sc.rbar.x -text "----"
+label .ts.sc.rbar.y -text "----"
+pack .ts.sc.rbar -side right -fill y
+pack .ts.sc.rbar.y .ts.sp.rbar.x -side bottom
+pack .ts.sc.rbar.vs -expand 1 -fill both
+bind .ts.sc.rbar.vs <ButtonRelease> { adjustROI }
+pack .ts.sc.g  -expand 1  -fill both
+InitCrosshairs .ts.sc.g
+bind .ts.sc.g <Motion> {atXhairs .ts.sp.g}
+## note inside bind, % has meaning, needs escaping as %%
+bind .ts.sc.g <2> {
+  global sx yint slope ch ncal
+  set ch($ncal) [format "%%.2f" [expr ($sx-$yint)/$slope]]
+  }
 
-set fileName ""
-newVector ::x ""
-newVector ::x0 ""
-newVector ::y ""
-newVector ::z ""
+.ts tab configure Control -window .ts.sp -expand 1 -fill both
 
 ### pop-up help ----------------------------------------------------------------------------
 

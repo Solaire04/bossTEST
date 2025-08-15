@@ -1607,9 +1607,9 @@ button .ts.triax.actions.cm3 -text "Test3" -bg LightGreen -command {SaveSettings
 
 pack .ts.triax.actions.cm1 .ts.triax.actions.cm2 .ts.triax.actions.cm3 -side left 
 
-table .ts.triax.actions 0,0 .ts.cb.l.actions.cm1  
-table .ts.triax.actions 1,1 .ts.cb.l.actions.cm2
-table .ts.triax.actions 2,2 .ts.cb.l.actions.cm3  
+table .ts.triax.actions 0,0 .ts.triax.actions.cm1  
+table .ts.triax.actions 1,1 .ts.triax.actions.cm2
+table .ts.triax.actions 2,2 .ts.triax.actions.cm3  
 
 table .ts.triax $i,0 .ts.triax.actions -cspan 5
 incr i

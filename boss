@@ -1600,9 +1600,9 @@ label .ts.triax.label -text "Spectrometer Control Menu"
 
 
 frame .ts.triax.actions
-button .ts.triax.actions.cm1 -text "Test1" -bg LightGreen -command {SaveSettings 1 $File}
-button .ts.triax.actions.cm2 -text "Test2" -bg LightGreen -command {SaveSettings 1 $File}
-button .ts.triax.actions.cm3 -text "Test3" -bg LightGreen -command {SaveSettings 1 $File}
+button .ts.triax.actions.cm1 -text "Startup" -bg LightGreen -command { sendGPIB "02000" }
+button .ts.triax.actions.cm2 -text "Test2" -bg LightGreen -command { sendGPIB " " }
+button .ts.triax.actions.cm3 -text "Test3" -bg LightGreen -command { sendGPIB " " }
 
 
 pack .ts.triax.actions.cm1 .ts.triax.actions.cm2 .ts.triax.actions.cm3 -side left 
@@ -1624,7 +1624,7 @@ table configure .ts.triax -propagate true
 ### pop-up help ----------------------------------------------------------------------------
 
 tooltip::tooltip .ts.lv.tbar.vdev "Select the camera from the list\nIf only one, it will autoconnect"
-tooltip::tooltip .ts.triax.actions.cm1 "TBA"
+tooltip::tooltip .ts.triax.actions.cm1 "Run once per power cycle, perform motor calibration once complete"
 tooltip::tooltip .ts.triax.actions.cm2 "TBA"
 tooltip::tooltip .ts.triax.actions.cm3 "TBA"
 tooltip::tooltip .ts.lv.tbar.reset "(Re)Connect the selected camera"

@@ -1614,9 +1614,9 @@ button .ts.triax.actions.cm8 -text "Test" -bg LightGreen -command { sendGPIB " "
 pack .ts.triax.actions.start .ts.triax.actions.mcal .ts.triax.actions.mmove -side left 
 pack .ts.triax.actions.cm4 .ts.triax.actions.cm5 .ts.triax.actions.cm6 .ts.triax.actions.cm7 .ts.triax.actions.cm8 -side right
 
-table .ts.triax.actions 0,0 .ts.triax.actions.start .ts.triax.actions 0,1 .ts.triax.actions.mcal 
-table .ts.triax.actions 1,0 .ts.triax.actions.mmove .ts.triax.actions 1,1 .ts.triax.actions.cm4 .ts.triax.actions 1,2 .ts.triax.actions.cm5
-table .ts.triax.actions 2,0 .ts.triax.actions.cm6 .ts.triax.actions 2,1 .ts.triax.actions.cm7 .ts.triax.actions 2,1 .ts.triax.actions.cm8
+table .ts.triax.actions 0,0 .ts.triax.actions.start 0,1 .ts.triax.actions.mcal 
+table .ts.triax.actions 1,0 .ts.triax.actions.mmove 1,1 .ts.triax.actions.cm4 1,2 .ts.triax.actions.cm5
+table .ts.triax.actions 2,0 .ts.triax.actions.cm6 2,1 .ts.triax.actions.cm7 .ts.triax.actions.cm8
 
 table .ts.triax $i,0 .ts.triax.actions -cspan 5
 incr i
@@ -1631,9 +1631,9 @@ table configure .ts.triax -propagate true
 ### pop-up help ----------------------------------------------------------------------------
 
 tooltip::tooltip .ts.lv.tbar.vdev "Select the camera from the list\nIf only one, it will autoconnect"
-tooltip::tooltip .ts.triax.actions.cm1 "Run once per power cycle, perform motor calibration once complete"
-tooltip::tooltip .ts.triax.actions.cm2 "TBA"
-tooltip::tooltip .ts.triax.actions.cm3 "TBA"
+tooltip::tooltip .ts.triax.actions.start "Run once per power cycle, perform motor calibration once complete"
+tooltip::tooltip .ts.triax.actions.mcal "TBA"
+tooltip::tooltip .ts.triax.actions.mmove "TBA"
 tooltip::tooltip .ts.lv.tbar.reset "(Re)Connect the selected camera"
 tooltip::tooltip .ts.lv.tbar.cool "Toggle the power to the camera sensor cooler"
 tooltip::tooltip .ts.lv.tbar.snap "Get a full-frame snapshot from the camera"

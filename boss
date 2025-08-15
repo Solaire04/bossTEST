@@ -1600,16 +1600,23 @@ label .ts.triax.label -text "Spectrometer Control Menu"
 
 
 frame .ts.triax.actions
-button .ts.triax.actions.cm1 -text "Startup" -bg LightGreen -command { sendGPIB "02000" }
-button .ts.triax.actions.cm2 -text "Test2" -bg LightGreen -command { sendGPIB " " }
-button .ts.triax.actions.cm3 -text "Test3" -bg LightGreen -command { sendGPIB " " }
+button .ts.triax.actions.start -text "Startup" -bg LightGreen -command { sendGPIB "02000" }
+button .ts.triax.actions.mcal -text "Motor Cal." -bg LightGreen -command { sendGPIB "A" }
+button .ts.triax.actions.mmove -text "Motor Move" -bg LightGreen -command { sendGPIB "F0,$mMove" }
+button .ts.triax.actions.cm4 -text "Test" -bg LightGreen -command { sendGPIB " " }
+button .ts.triax.actions.cm5 -text "Test" -bg LightGreen -command { sendGPIB " " }
+button .ts.triax.actions.cm6 -text "Test" -bg LightGreen -command { sendGPIB " " }
+button .ts.triax.actions.cm7 -text "Test" -bg LightGreen -command { sendGPIB " " }
+button .ts.triax.actions.cm8 -text "Test" -bg LightGreen -command { sendGPIB " " }
 
 
-pack .ts.triax.actions.cm1 .ts.triax.actions.cm2 .ts.triax.actions.cm3 -side left 
 
-table .ts.triax.actions 0,0 .ts.triax.actions.cm1  
-table .ts.triax.actions 1,1 .ts.triax.actions.cm2
-table .ts.triax.actions 2,2 .ts.triax.actions.cm3  
+pack .ts.triax.actions.start .ts.triax.actions.mcal .ts.triax.actions.mmove -side left 
+pack .ts.triax.actions.cm4 .ts.triax.actions.cm5 .ts.triax.actions.cm6 .ts.triax.actions.cm7 .ts.triax.actions.cm8 -side right
+
+table .ts.triax.actions 0,0 .ts.triax.actions.start .ts.triax.actions 0,1 .ts.triax.actions.mcal 
+table .ts.triax.actions 1,0 .ts.triax.actions.mmove .ts.triax.actions 1,1 .ts.triax.actions.cm4 .ts.triax.actions 1,2 .ts.triax.actions.cm5
+table .ts.triax.actions 2,0 .ts.triax.actions.cm6 .ts.triax.actions 2,1 .ts.triax.actions.cm7 .ts.triax.actions 2,1 .ts.triax.actions.cm8
 
 table .ts.triax $i,0 .ts.triax.actions -cspan 5
 incr i

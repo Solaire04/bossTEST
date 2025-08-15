@@ -1609,8 +1609,7 @@ button .ts.triax.actions.command1 -text "Test1" -bg LightGreen -command {SaveSet
 button .ts.triax.actions.command2 -text "Test2" -bg LightGreen -command {SaveSettings 1 $File}
 button .ts.triax.actions.command3 -text "Test3" -bg LightGreen -command {SaveSettings 1 $File}
 
-pack .ts.triax.tbar.s -side right
-pack .ts.triax.tbar.link .ts.gpib.tbar.portlab .ts.gpib.tbar.port .ts.gpib.tbar.addrlab .ts.gpib.tbar.addr -side left
+pack .ts.triax.tbar.link .ts.triax.tbar.portlab .ts.triax.tbar.port .ts.triax.tbar.addrlab .ts.triax.tbar.addr -side left
 pack .ts.triax.tbar -side top -fill x
 pack .ts.triax.actions.command1 .ts.triax.actions.command2 -side right
 pack .ts.triax.actions.command3 -side left

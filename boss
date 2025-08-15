@@ -1598,23 +1598,24 @@ if {$NOGPIB} {.ts tab configure GPIB -hidden 1}
 frame .ts.triax
 label .ts.triax.label -text "Spectrometer Control Menu"
 
-#frame .ts.triax.tbar -relief raised -borderwidth 1
-#button .ts.triax.tbar.link -image button_attach -command {connectGPIB}
-#label .ts.triax.tbar.portlab -text "GPIB:"
-#entry .ts.triax.tbar.port -textvariable gpib_board -width 2 -background white
-#label .ts.triax.tbar.addrlab -text " Address:"
-#entry .ts.triax.tbar.addr -textvariable dev_addr -width 2 -background white
 
 frame .ts.triax.actions
-button .ts.triax.actions.command1 -text "Test1" -bg LightGreen -command {SaveSettings 1 $File}
-button .ts.triax.actions.command2 -text "Test2" -bg LightGreen -command {SaveSettings 1 $File}
-button .ts.triax.actions.command3 -text "Test3" -bg LightGreen -command {SaveSettings 1 $File}
+button .ts.triax.actions.cm1 -text "Test1" -bg LightGreen -command {SaveSettings 1 $File}
+button .ts.triax.actions.cm2 -text "Test2" -bg LightGreen -command {SaveSettings 1 $File}
+button .ts.triax.actions.cm3 -text "Test3" -bg LightGreen -command {SaveSettings 1 $File}
 
-#pack .ts.triax.tbar.link .ts.triax.tbar.portlab .ts.triax.tbar.port .ts.triax.tbar.addrlab .ts.triax.tbar.addr -side left
-#pack .ts.triax.tbar -side top -fill x
-pack .ts.triax.actions.command1 .ts.triax.actions.command2 -side right
-pack .ts.triax.actions.command3 -side left
-table .ts.triax $i,0 .ts.triax.actions -cspan 3
+
+pack .ts.triax.actions.cm1 .ts.triax.actions.cm2 .ts.triax.actions.cm3 -side left 
+
+table .ts.triax.actions 0,0 .ts.cb.l.actions.cm1  
+table .ts.triax.actions 1,1 .ts.cb.l.actions.cm2
+table .ts.triax.actions 2,2 .ts.cb.l.actions.cm3  
+
+table .ts.triax $i,0 .ts.triax.actions -cspan 5
+incr i
+table .ts.triax $i,0 .ts.triax.actions -cspan 5
+incr i
+table .ts.triax $i,0 .ts.triax.actions -cspan 5
 
 table configure .ts.triax -propagate true
 
@@ -1623,9 +1624,9 @@ table configure .ts.triax -propagate true
 ### pop-up help ----------------------------------------------------------------------------
 
 tooltip::tooltip .ts.lv.tbar.vdev "Select the camera from the list\nIf only one, it will autoconnect"
-tooltip::tooltip .ts.triax.actions.command1 "TBA"
-tooltip::tooltip .ts.triax.actions.command2 "TBA"
-tooltip::tooltip .ts.triax.actions.command3 "TBA"
+tooltip::tooltip .ts.triax.actions.cm1 "TBA"
+tooltip::tooltip .ts.triax.actions.cm2 "TBA"
+tooltip::tooltip .ts.triax.actions.cm3 "TBA"
 tooltip::tooltip .ts.lv.tbar.reset "(Re)Connect the selected camera"
 tooltip::tooltip .ts.lv.tbar.cool "Toggle the power to the camera sensor cooler"
 tooltip::tooltip .ts.lv.tbar.snap "Get a full-frame snapshot from the camera"
